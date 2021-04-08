@@ -1,0 +1,6 @@
+build*/
+callgrind.out.*
+data/
+nsight/
+output/
+vgcore.*
