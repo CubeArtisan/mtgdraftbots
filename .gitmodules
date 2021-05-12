@@ -1,0 +1,6 @@
+[submodule "extern/pcg-cpp"]
+	path = extern/pcg-cpp
+	url = https://github.com/imneme/pcg-cpp.git
+[submodule "extern/frozen"]
+	path = extern/frozen
+	url = https://github.com/serge-sans-paille/frozen.git

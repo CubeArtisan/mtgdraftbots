@@ -4,3 +4,6 @@ data/
 nsight/
 output/
 vgcore.*
+.cache/*
+compile_commands.json
+include/mtgdraftbots/generated/

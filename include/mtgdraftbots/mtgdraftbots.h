@@ -9,8 +9,20 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
+
+#include "pcg_random.hpp"
+
+#include "generated/constants.h"
+
+// Need this since our optimizations don't work in constexpr without bit_cast.
+#ifdef HAVE_BITCAST
+#define CONSTEXPR contexpr
+#else
+#define CONSTEXPR inline
+#endif
 
 namespace mtgdraftbots {
     using Lands = std::array<std::uint8_t, 32>;
@@ -20,22 +32,17 @@ namespace mtgdraftbots {
     struct BotScore;
 
     struct DrafterState {
-        // TODO: Make all these vectors small_vector to avoid dynamic allocations as much as possible.
-        std::vector<std::uint16_t> picked;
-        std::vector<std::uint16_t> seen;
-        std::vector<std::uint16_t> cards_in_pack;
-        std::vector<std::uint16_t> basics;
-        std::vector<std::string> card_names;
-        std::pair<Coord, Coord> coords;
-        std::pair<float, float> coord_weights;
+        std::vector<std::string> picked;
+        std::vector<std::string> seen;
+        std::vector<std::string> cards_in_pack;
+        std::vector<std::string> basics;
+        std::uint8_t pack_num;
+        std::uint8_t num_packs;
+        std::uint8_t pick_num;
+        std::uint8_t num_picks;
         std::uint32_t seed;
 
-#ifdef HAVE_BITCAST
-        constexpr
-#else // We need this to prevent ODR errors that we'd much rather just avoid with constexpr
-        inline
-#endif
-        auto calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore;
+        CONSTEXPR auto calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore;
     };
 
     struct OracleResult {
@@ -46,108 +53,11 @@ namespace mtgdraftbots {
         std::vector<float> per_card;
     };
 
-    namespace internal::oracles {
-        constexpr std::size_t WEIGHT_X_DIM = 15;
-        constexpr std::size_t WEIGHT_Y_DIM = 3;
-        using Weights = std::array<std::array<float, WEIGHT_Y_DIM>, WEIGHT_X_DIM>;
-        using OracleFunction = OracleResult (*) (const BotScore& bot_score);
-        struct Oracle {
-            constexpr auto calculate_weight(const std::pair<Coord, Coord>& coords,
-                                            const std::pair<float, float> coord_weights) const -> float {
-                const auto& [coord1, coord2] = coords;
-                const auto& [coord1x, coord1y] = coord1;
-                const auto& [coord2x, coord2y] = coord2;
-                const auto& [coord1Weight, coord2Weight] = coord_weights;
-                return coord1Weight * coord2Weight * weights[coord1x][coord1y]
-                     + coord1Weight * (1 - coord2Weight) * weights[coord1x][coord2y]
-                     + (1 - coord1Weight) * coord2Weight * weights[coord2x][coord1y]
-                     + (1 - coord1Weight) * (1 - coord2Weight) * weights[coord2x][coord2y];
-            };
-
-            OracleFunction calculate_value;
-
-            Weights weights;
-        };
-
-        // TODO: Move into separate constants file.
-        constexpr Weights RATING_WEIGHTS{};
-        constexpr Weights PICK_SYNERGY_WEIGHTS{};
-        constexpr Weights INTERNAL_SYNERGY_WEIGHTS{};
-        constexpr Weights COLORS_WEIGHTS{};
-        constexpr Weights OPENNESS_WEIGHTS{};
-
-        constexpr Oracle rating_oracle{
-            // TODO: Implement.
-            [](const BotScore& bot_score) -> OracleResult { return {}; },
-            RATING_WEIGHTS,
-        };
-
-        constexpr Oracle pick_synergy_oracle{
-            // TODO: Implement.
-            [](const BotScore& bot_score) -> OracleResult { return {}; },
-            PICK_SYNERGY_WEIGHTS,
-        };
-
-        constexpr Oracle internal_synergy_oracle{
-            // TODO: Implement.
-            [](const BotScore& bot_score) -> OracleResult { return {}; },
-            INTERNAL_SYNERGY_WEIGHTS,
-        };
-
-        constexpr Oracle colors_oracle{
-            // TODO: Implement.
-            [](const BotScore& bot_score) -> OracleResult { return {}; },
-            COLORS_WEIGHTS,
-        };
-
-        constexpr Oracle openness_oracle{
-            // TODO: Implement.
-            [](const BotScore& bot_score) -> OracleResult { return {}; },
-            OPENNESS_WEIGHTS,
-        };
-
-        constexpr std::array ORACLES = {
-            rating_oracle,
-            pick_synergy_oracle,
-            internal_synergy_oracle,
-            colors_oracle,
-            openness_oracle,
-        };
-    }
-
-    struct BotScore {
-        DrafterState drafter_state;
-        float score;
-        std::array<OracleResult, internal::oracles::ORACLES.size()> oracle_results;
-        float total_nonland_prob;
-        Option option;
-        std::array<bool, 5> colors;
-        Lands lands;
-        std::vector<float> probabilities;
-    };
-
     namespace internal {
         enum struct Mask : std::uint8_t {
             ON = 0xFF, OFF = 0x00
         };
-        using Embedding = std::array<float, 64>;
         using LandsMask = std::array<Mask, 32>;
-        constexpr std::size_t COUNT_DIMS_EXP = 5;
-        // This is slightly misleading since these are actually 1 greater than the max value
-        // since they are the size of that dimension.
-        constexpr std::size_t MAX_COUNT_A  = 1 << COUNT_DIMS_EXP;
-        constexpr std::size_t MAX_COUNT_B  = 1 << COUNT_DIMS_EXP;
-        constexpr std::size_t MAX_COUNT_AB = 1 << COUNT_DIMS_EXP;
-        constexpr std::size_t MAX_REQUIRED_B = 4;
-        constexpr std::size_t MAX_REQUIRED_A = 7;
-        constexpr std::size_t MAX_CMC = 11;
-        constexpr std::size_t PROB_TABLE_SIZE =  MAX_COUNT_A * MAX_COUNT_B * MAX_COUNT_AB\
-                                               * MAX_REQUIRED_B * MAX_REQUIRED_A * MAX_CMC;
-        // It's okay to sacrifice precision here, 16 fixed point is really good enough, could probably even use 8 bit.
-        // TODO: Find way to initialize this from a file, maybe just include a generated file.
-        constexpr std::array<std::uint16_t, PROB_TABLE_SIZE> PROB_TABLE{};
-        // Multiplying a 16 bit fixed point number by this converts it into the [0, 1] inclusive range.
-        constexpr float PROB_SCALING_FACTOR = 1 / static_cast<float>(0xFFFF);
 
 #ifdef HAVE_BITCAST
         constexpr auto sum_masked(const LandMask& mask, const Lands& lands) -> std::uint8_t {
@@ -201,12 +111,8 @@ namespace mtgdraftbots {
 
         template<>
         struct ManaRequirements<1> {
-#ifdef HAVE_BITCAST
-            constexpr
-#else
-            inline
-#endif
-            auto calculate_probability(const Lands& lands) const -> float {
+            CONSTEXPR auto calculate_probability(const Lands& lands) const -> float {
+                using namespace constants;
                 const std::uint8_t usable = sum_masked(valid_lands, lands);
                 // We convert back to float here from 16 bit fixed point.
                 return PROB_TABLE[offset | usable] * PROB_SCALING_FACTOR;
@@ -221,12 +127,8 @@ namespace mtgdraftbots {
 
         template<>
         struct ManaRequirements<2> {
-#ifdef HAVE_BITCAST
-            constexpr
-#else
-            inline
-#endif
-            auto calculate_probability(const Lands& lands) const -> float {
+            CONSTEXPR auto calculate_probability(const Lands& lands) const -> float {
+                using namespace constants;
                 const std::size_t usable_a  = sum_masked( valid_lands_a, lands);
                 const std::size_t usable_b  = sum_masked( valid_lands_b, lands);
                 const std::size_t usable_ab = sum_masked(valid_lands_ab, lands);
@@ -246,12 +148,7 @@ namespace mtgdraftbots {
 
         template<uint8_t n> requires (n > 2)
         struct ManaRequirements<n> {
-#ifdef HAVE_BITCAST
-            constexpr
-#else
-            inline
-#endif
-            auto calculate_probability(const Lands& lands) const -> float {
+            CONSTEXPR auto calculate_probability(const Lands& lands) const -> float {
                 float result = 1;
                 for (const ManaRequirements<1>& sub_requirement : sub_requirements) {
                     result *= sub_requirement.calculate_probability(lands);
@@ -267,15 +164,12 @@ namespace mtgdraftbots {
         };
 
         struct CardCost {
-#ifdef HAVE_BITCAST
-            constexpr
-#else
-            inline
-#endif
-            auto calculate_probability(const Lands& lands) const -> float {
+            CONSTEXPR auto calculate_probability(const Lands& lands) const -> float {
                 return std::visit([&lands](const auto& requirement) { return requirement.calculate_probability(lands); },
                                   inner_requirement);
             }
+
+            constexpr CardCost(std::uint8_t cmc, std::array<std::string_view, 11> symbols) {}
 
             std::size_t cost_index;
 
@@ -285,23 +179,108 @@ namespace mtgdraftbots {
         };
 
         struct CardValues {
-            Embedding embedding;
+            constexpr CardValues(const std::string_view name)
+                : index(constants::CARD_INDICES.at(name)),
+                  embedding(constants::CARD_EMBEDDINGS[index]),
+                  rating(constants::CARD_RATINGS[index]),
+                  cost(constants::CARD_CMCS[index], constants::CARD_COST_SYMBOLS[index])
+            {}
+            std::size_t index;
+            constants::Embedding embedding;
             float rating;
             CardCost cost;
-            size_t card_index;
-            // I'd like these to be in a separate object so we don't have to carry them everywhere.
-            std::optional<std::uint8_t> produces;
-            std::string name;
         };
 
+        struct BotState {
+            BotState(const DrafterState& drafter_state) {}
+
+            std::vector<CardValues> picked;
+            std::vector<CardValues> seen;
+            std::vector<CardValues> cards_in_pack;
+            std::vector<CardValues> basics;
+            std::pair<Coord, Coord> coords;
+            std::pair<float, float> coord_weights;
+            pcg32 rng;
+        };
+
+        namespace oracles {
+            using OracleFunction = OracleResult (*) (const BotScore& bot_score);
+            struct Oracle {
+                constexpr auto calculate_weight(const std::pair<Coord, Coord>& coords,
+                                                const std::pair<float, float> coord_weights) const -> float {
+                    const auto& [coord1, coord2] = coords;
+                    const auto& [coord1x, coord1y] = coord1;
+                    const auto& [coord2x, coord2y] = coord2;
+                    const auto& [coord1Weight, coord2Weight] = coord_weights;
+                    return coord1Weight * coord2Weight * weights[coord1x][coord1y]
+                         + coord1Weight * (1 - coord2Weight) * weights[coord1x][coord2y]
+                         + (1 - coord1Weight) * coord2Weight * weights[coord2x][coord1y]
+                         + (1 - coord1Weight) * (1 - coord2Weight) * weights[coord2x][coord2y];
+                };
+
+                OracleFunction calculate_value;
+                constants::Weights weights;
+            };
+
+            constexpr Oracle rating_oracle{
+                // TODO: Implement.
+                [](const BotScore& bot_score) -> OracleResult { return {}; },
+                constants::RATING_WEIGHTS,
+            };
+
+            constexpr Oracle pick_synergy_oracle{
+                // TODO: Implement.
+                [](const BotScore& bot_score) -> OracleResult { return {}; },
+                constants::PICK_SYNERGY_WEIGHTS,
+            };
+
+            constexpr Oracle internal_synergy_oracle{
+                // TODO: Implement.
+                [](const BotScore& bot_score) -> OracleResult { return {}; },
+                constants::INTERNAL_SYNERGY_WEIGHTS,
+            };
+
+            constexpr Oracle colors_oracle{
+                // TODO: Implement.
+                [](const BotScore& bot_score) -> OracleResult { return {}; },
+                constants::COLORS_WEIGHTS,
+            };
+
+            constexpr Oracle openness_oracle{
+                // TODO: Implement.
+                [](const BotScore& bot_score) -> OracleResult { return {}; },
+                constants::OPENNESS_WEIGHTS,
+            };
+
+            constexpr std::array ORACLES = {
+                rating_oracle,
+                pick_synergy_oracle,
+                internal_synergy_oracle,
+                colors_oracle,
+                openness_oracle,
+            };
+        }
+    }
+
+    struct BotScore {
+        DrafterState drafter_state;
+        float score;
+        std::array<OracleResult, internal::oracles::ORACLES.size()> oracle_results;
+        float total_nonland_prob;
+        Option option;
+        std::array<bool, 5> colors;
+        Lands lands;
+        std::vector<float> probabilities;
+    };
+
+    namespace internal {
         struct Transition {
             std::uint8_t increase_color;
             std::uint8_t decrease_color;
         };
 
         // TODO: Can this be constexpr?
-        template <typename Generator>
-        inline auto find_transitions(const Lands& lands, const Lands& availableLands, Generator& rng) -> std::vector<Transition> {
+        inline auto find_transitions(const Lands& lands, const Lands& availableLands, pcg32& rng) -> std::vector<Transition> {
             // TODO: Implement.
             return {};
         };
@@ -312,27 +291,41 @@ namespace mtgdraftbots {
             return {};
         }
 
-        template <typename Generator>
-        constexpr auto choose_random_lands(const Lands& availableLands, Generator& rng) -> Lands {
+        constexpr auto choose_random_lands(const Lands& availableLands, pcg32& rng) -> Lands {
             // TODO: Implement.
             return {};
         }
 
         // TODO: If find_transitions can be made constexpr so should this.
-        inline auto calculate_score(BotScore& bot_score) -> BotScore& {
+        inline auto calculate_score(const BotState& bot_state, BotScore& bot_score) -> BotScore& {
             // TODO: Implement.
             return bot_score;
         }
     }
 
-#ifdef HAVE_BITCAST
-    constexpr
-#else // We need this to prevent ODR errors that we'd much rather just avoid with constexpr
-    inline
-#endif
-    auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
+    CONSTEXPR auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
+        using namespace internal;
+        BotState bot_state{*this};
+        pcg32 rng{seed};
+        BotScore result;
+        for (const auto& option_indices : options) {
+            std::vector<CardValues> option;
+            option.reserve(option_indices.size());
+            for (const auto& index : option_indices) option.push_back(bot_state.cards_in_pack[index]);
+            const Lands available_lands = get_available_lands(bot_state.picked, option, bot_state.basics);
+            const Lands initial_lands = choose_random_lands(available_lands, rng);
+            BotScore next_score;
+            calculate_score(bot_state, next_score);
+            BotScore prev_score;
+            prev_score.score = next_score.score - 1;
+            while (next_score.score > prev_score.score) {
+                prev_score = next_score;
+                for (const auto& [increase, decrease] : find_transitions(prev_score.lands, available_lands, rng)) {
+                }
+            }
+        }
         // TODO: Implement
-        return {};
+        return result;
     }
 }
 #endif
