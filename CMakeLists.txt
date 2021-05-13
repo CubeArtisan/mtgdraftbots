@@ -35,7 +35,7 @@ endif ()
 
 include (${CMAKE_BINARY_DIR}/conan.cmake)
 
-conan_cmake_configure (REQUIRES frozen/1.0.1 eigen/3.3.9
+conan_cmake_configure (REQUIRES frozen/1.0.1 eigen/3.3.9 mpark-variant/1.4.0
                        GENERATORS cmake_find_package_multi)
 
 foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
@@ -51,6 +51,9 @@ target_link_libraries (MtgDraftBots INTERFACE frozen::frozen)
 
 find_package (Eigen3 CONFIG REQUIRED)
 target_link_libraries (MtgDraftBots INTERFACE Eigen3::Eigen)
+
+find_package (mpark_variant CONFIG REQUIRED)
+target_link_libraries (MtgDraftBots INTERFACE mpark_variant::mpark_variant)
 
 # This is used for getting compile_commands.json
 add_executable (MtgDraftBotsTemp "src/temp.cpp")

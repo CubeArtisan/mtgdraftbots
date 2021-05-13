@@ -6,6 +6,7 @@
 #include <bits/c++config.h>
 #include <cstring>
 #include <cstdint>
+#include <frozen/string.h>
 #include <map>
 #include <optional>
 #include <random>
@@ -15,7 +16,7 @@
 #include <variant>
 #include <vector>
 
-#include <Eigen/Eigen>
+#include <Eigen/Dense>
 
 #include "mtgdraftbots/oracles.hpp"
 #include "mtgdraftbots/details/cardcost.hpp"
@@ -28,15 +29,15 @@ namespace mtgdraftbots {
 
         struct CardValues {
             // Can this be constexpr?
-            inline CardValues(const Eigen::ArrayXi indices_)
+            inline explicit CardValues(const Eigen::ArrayXi indices_)
                 : indices(indices_),
-                  embeddings(indices.rows()),
+                  embeddings(indices.rows(), 64),
                   ratings(indices.rows())
             {
                 costs.reserve(indices.rows());
                 for (std::size_t i=0; i < indices.rows(); i++) {
                     embeddings.row(i) = Eigen::Matrix<float, 1, mtgdraftbots::constants::EMBEDDING_SIZE>(
-                        mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]]
+                        mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]].data()
                     );
                     ratings[i] = constants::CARD_RATINGS[indices[i]];
                     costs.push_back({mtgdraftbots::constants::CARD_CMCS[indices[i]],
@@ -51,8 +52,6 @@ namespace mtgdraftbots {
 
         template <typename Rng>
         struct BotState {
-            inline BotState(const DrafterState& drafter_state, Rng&& _rng) : rng(_rng) {}
-
             CardValues picked;
             CardValues seen;
             CardValues cards_in_pack;
@@ -66,7 +65,7 @@ namespace mtgdraftbots {
     struct BotScore {
         DrafterState drafter_state;
         float score;
-        std::array<OracleResult, internal::oracles::ORACLES.size()> oracle_results;
+        std::array<OracleResult, oracles::ORACLES.size()> oracle_results;
         float total_nonland_prob;
         Option option;
         std::array<bool, 5> colors;
@@ -105,12 +104,42 @@ namespace mtgdraftbots {
             // TODO: Implement.
             return bot_score;
         }
+
+        inline Eigen::ArrayXi get_card_indices(const std::vector<std::string>& names) {
+            std::vector<int> picked_indices;
+            picked_indices.reserve(names.size());
+            for (size_t i=0; i < names.size(); i++) {
+                const auto iter = mtgdraftbots::constants::CARD_INDICES.find(frozen::string(names[i]));
+                if (iter != mtgdraftbots::constants::CARD_INDICES.end()) {
+                    picked_indices.push_back(iter->second);
+                }
+            }
+            Eigen::ArrayXi result(picked_indices.size());
+            for (size_t i=0; i < picked_indices.size(); i++) {
+                result[i] = picked_indices[i];
+            }
+            return result;
+        }
     }
 
     // TODO: Make this constexpr
     inline auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
         using namespace internal;
-        BotState bot_state{*this, std::mt19937_64{seed}};
+        const float packFloat = constants::WEIGHT_Y_DIM * static_cast<float>(pack_num) / num_packs;
+        const float pickFloat = constants::WEIGHT_X_DIM * static_cast<float>(pick_num) / num_picks;
+        const std::size_t packLower = static_cast<std::size_t>(packFloat);
+        const std::size_t pickLower = static_cast<std::size_t>(pickFloat);
+        const std::size_t packUpper = std::min(packLower + 1, constants::WEIGHT_Y_DIM - 1);
+        const std::size_t pickUpper = std::min(pickLower + 1, constants::WEIGHT_X_DIM - 1);
+        BotState<std::mt19937_64> bot_state{
+            CardValues{internal::get_card_indices(picked)},
+            CardValues{internal::get_card_indices(seen)},
+            CardValues{internal::get_card_indices(cards_in_pack)},
+            CardValues{internal::get_card_indices(basics)},
+            {{pickLower, packLower}, {pickUpper, packUpper}},
+            {packFloat - packLower, pickFloat - pickLower},
+            std::mt19937_64{seed}
+        };
         BotScore result;
         for (const auto& option_indices : options) {
             Eigen::ArrayXi option_card_indices(option_indices.size());
@@ -127,10 +156,10 @@ namespace mtgdraftbots {
             while (next_score.score > prev_score.score) {
                 prev_score = next_score;
                 for (const auto& [increase, decrease] : find_transitions(prev_score.lands, available_lands, bot_state.rng)) {
+                    // TODO: Implement
                 }
             }
         }
-        // TODO: Implement
         return result;
     }
 }
