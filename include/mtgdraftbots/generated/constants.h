@@ -7,10 +7,10 @@
 #include <map>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 #include <frozen/unordered_map.h>
 #include <frozen/string.h>
-#include <utility>
 
 namespace mtgdraftbots::constants {
     constexpr std::size_t COUNT_DIMS_EXP = 5;
@@ -30,6 +30,7 @@ namespace mtgdraftbots::constants {
     // Multiplying a 16 bit fixed point number by this converts it into the [0, 1] inclusive range.
     constexpr float PROB_SCALING_FACTOR = 1 / static_cast<float>(0xFFFF);
 
+    constexpr size_t EMBEDDING_SIZE = 64;
     using Embedding = std::array<float, 64>;
 
     constexpr std::size_t NUM_CARDS = 1;
@@ -47,7 +48,6 @@ namespace mtgdraftbots::constants {
     constexpr std::size_t WEIGHT_X_DIM = 15;
     constexpr std::size_t WEIGHT_Y_DIM = 3;
     using Weights = std::array<std::array<float, WEIGHT_Y_DIM>, WEIGHT_X_DIM>;
-    // TODO: Move into separate constants file.
     constexpr Weights RATING_WEIGHTS{};
     constexpr Weights PICK_SYNERGY_WEIGHTS{};
     constexpr Weights INTERNAL_SYNERGY_WEIGHTS{};

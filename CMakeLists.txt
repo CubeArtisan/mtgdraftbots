@@ -28,14 +28,14 @@ set_target_properties (MtgDraftBots PROPERTIES CXX_STANDARD 20
 if (NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
   message (STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
   file (DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/develop/conan.cmake"
-                "${CMAKE_BINARY_DIR}/conan.cmake"
-                EXPECTED_HASH SHA256=396e16d0f5eabdc6a14afddbcfff62a54a7ee75c6da23f32f7a31bc85db23484
-                TLS_VERIFY ON)
+                 "${CMAKE_BINARY_DIR}/conan.cmake"
+                 EXPECTED_HASH SHA256=ddf0fafacf48b5c4912ecce5701c252532437c40277734cad5f4a8084470adbc
+                 TLS_VERIFY ON)
 endif ()
 
 include (${CMAKE_BINARY_DIR}/conan.cmake)
 
-conan_cmake_configure (REQUIRES frozen/1.0.1
+conan_cmake_configure (REQUIRES frozen/1.0.1 eigen/3.3.9
                        GENERATORS cmake_find_package_multi)
 
 foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
@@ -46,8 +46,11 @@ foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
                         SETTINGS ${settings})
 endforeach ()
 
-find_package (frozen CONFIG)
+find_package (frozen CONFIG REQUIRED)
 target_link_libraries (MtgDraftBots INTERFACE frozen::frozen)
+
+find_package (Eigen3 CONFIG REQUIRED)
+target_link_libraries (MtgDraftBots INTERFACE Eigen3::Eigen)
 
 # This is used for getting compile_commands.json
 add_executable (MtgDraftBotsTemp "src/temp.cpp")
