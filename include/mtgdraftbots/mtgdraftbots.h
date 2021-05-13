@@ -8,12 +8,11 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
-
-#include "pcg_random.hpp"
 
 #include "generated/constants.h"
 
@@ -191,8 +190,9 @@ namespace mtgdraftbots {
             CardCost cost;
         };
 
+        template <typename Rng>
         struct BotState {
-            BotState(const DrafterState& drafter_state) {}
+            BotState(const DrafterState& drafter_state, Rng&& _rng) : rng(_rng) {}
 
             std::vector<CardValues> picked;
             std::vector<CardValues> seen;
@@ -200,7 +200,7 @@ namespace mtgdraftbots {
             std::vector<CardValues> basics;
             std::pair<Coord, Coord> coords;
             std::pair<float, float> coord_weights;
-            pcg32 rng;
+            mutable Rng rng;
         };
 
         namespace oracles {
@@ -280,7 +280,8 @@ namespace mtgdraftbots {
         };
 
         // TODO: Can this be constexpr?
-        inline auto find_transitions(const Lands& lands, const Lands& availableLands, pcg32& rng) -> std::vector<Transition> {
+        template<typename Rng>
+        inline auto find_transitions(const Lands& lands, const Lands& availableLands, Rng& rng) -> std::vector<Transition> {
             // TODO: Implement.
             return {};
         };
@@ -291,7 +292,8 @@ namespace mtgdraftbots {
             return {};
         }
 
-        constexpr auto choose_random_lands(const Lands& availableLands, pcg32& rng) -> Lands {
+        template<typename Rng>
+        constexpr auto choose_random_lands(const Lands& availableLands, Rng& rng) -> Lands {
             // TODO: Implement.
             return {};
         }
@@ -305,15 +307,14 @@ namespace mtgdraftbots {
 
     CONSTEXPR auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
         using namespace internal;
-        BotState bot_state{*this};
-        pcg32 rng{seed};
+        BotState bot_state{*this, std::mt19937_64{seed}};
         BotScore result;
         for (const auto& option_indices : options) {
             std::vector<CardValues> option;
             option.reserve(option_indices.size());
             for (const auto& index : option_indices) option.push_back(bot_state.cards_in_pack[index]);
             const Lands available_lands = get_available_lands(bot_state.picked, option, bot_state.basics);
-            const Lands initial_lands = choose_random_lands(available_lands, rng);
+            const Lands initial_lands = choose_random_lands(available_lands, bot_state.rng);
             BotScore next_score;
             calculate_score(bot_state, next_score);
             BotScore prev_score;

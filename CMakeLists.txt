@@ -9,22 +9,46 @@ cmake_minimum_required (VERSION 3.19)
 
 project (MtgDraftBots LANGUAGES CXX VERSION 0.0.1)
 
-add_subdirectory(extern/frozen)
+list (APPEND CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR})
+list (APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
 
-add_library(MtgDraftBots INTERFACE
+add_library (MtgDraftBots INTERFACE
     "include/mtgdraftbots/mtgdraftbots.h"
     "include/mtgdraftbots/generated/constants.h"
 )
 
-target_link_libraries(MtgDraftBots INTERFACE frozen::frozen)
-target_include_directories(MtgDraftBots INTERFACE "include" "extern/pcg-cpp/include")
+target_include_directories (MtgDraftBots INTERFACE "include")
 
-target_compile_features(MtgDraftBots INTERFACE cxx_std_20)
+target_compile_features (MtgDraftBots INTERFACE cxx_std_20)
 
-set_target_properties(MtgDraftBots PROPERTIES CXX_STANDARD 20
+set_target_properties (MtgDraftBots PROPERTIES CXX_STANDARD 20
                                               CXX_STANDARD_REQUIRED ON
                                               CXX_EXTENSIONS OFF)
 
-add_executable(MtgDraftBotsTemp "src/temp.cpp")
+if (NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
+  message (STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
+  file (DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/develop/conan.cmake"
+                "${CMAKE_BINARY_DIR}/conan.cmake"
+                EXPECTED_HASH SHA256=396e16d0f5eabdc6a14afddbcfff62a54a7ee75c6da23f32f7a31bc85db23484
+                TLS_VERIFY ON)
+endif ()
 
-target_link_libraries(MtgDraftBotsTemp PRIVATE MtgDraftBots)
+include (${CMAKE_BINARY_DIR}/conan.cmake)
+
+conan_cmake_configure (REQUIRES frozen/1.0.1
+                       GENERATORS cmake_find_package_multi)
+
+foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
+    conan_cmake_autodetect(settings BUILD_TYPE ${TYPE})
+    conan_cmake_install(PATH_OR_REFERENCE .
+                        BUILD missing
+                        REMOTE conan-center
+                        SETTINGS ${settings})
+endforeach ()
+
+find_package (frozen CONFIG)
+target_link_libraries (MtgDraftBots INTERFACE frozen::frozen)
+
+# This is used for getting compile_commands.json
+add_executable (MtgDraftBotsTemp "src/temp.cpp")
+target_link_libraries (MtgDraftBotsTemp PUBLIC MtgDraftBots)
