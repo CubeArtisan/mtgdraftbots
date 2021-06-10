@@ -68,8 +68,8 @@ namespace mtgdraftbots {
         std::array<OracleResult, oracles::ORACLES.size()> oracle_results;
         float total_nonland_prob;
         Option option;
-        std::array<bool, 5> colors;
-        Lands lands;
+        std::string colors;
+        std::map<std::string, int> lands;
         std::vector<float> probabilities;
     };
 
