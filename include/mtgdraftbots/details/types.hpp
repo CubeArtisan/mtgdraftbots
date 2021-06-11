@@ -34,5 +34,21 @@ namespace mtgdraftbots {
         float value;
         std::vector<float> per_card;
     };
+
+    constexpr size_t EMBEDDING_SIZE = 64;
+    using Embedding = std::array<float, 64>;
+
+    struct CardDetails {
+        std::string name;
+        std::vector<std::string> cost_symbols;
+        Embedding embedding;
+        float rating;
+        std::uint8_t cmc;
+        std::optional<std::uint8_t> produces;
+    };
+
+    constexpr std::size_t WEIGHT_X_DIM = 15;
+    constexpr std::size_t WEIGHT_Y_DIM = 3;
+    using Weights = std::array<std::array<float, WEIGHT_Y_DIM>, WEIGHT_X_DIM>;
 }
 #endif

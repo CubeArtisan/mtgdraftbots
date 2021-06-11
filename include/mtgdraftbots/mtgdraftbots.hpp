@@ -21,7 +21,7 @@
 #include "mtgdraftbots/oracles.hpp"
 #include "mtgdraftbots/details/cardcost.hpp"
 #include "mtgdraftbots/details/types.hpp"
-#include "mtgdraftbots/generated/constants.h"
+#include "mtgdraftbots/details/constants.hpp"
 
 namespace mtgdraftbots {
 
@@ -35,17 +35,17 @@ namespace mtgdraftbots {
                   ratings(indices.rows())
             {
                 costs.reserve(indices.rows());
-                for (std::size_t i=0; i < indices.rows(); i++) {
-                    embeddings.row(i) = Eigen::Matrix<float, 1, mtgdraftbots::constants::EMBEDDING_SIZE>(
-                        mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]].data()
-                    );
-                    ratings[i] = constants::CARD_RATINGS[indices[i]];
-                    costs.push_back({mtgdraftbots::constants::CARD_CMCS[indices[i]],
-                                     mtgdraftbots::constants::CARD_COST_SYMBOLS[indices[i]]});
-                }
+                /* for (std::size_t i=0; i < indices.rows(); i++) { */
+                /*     embeddings.row(i) = Eigen::Matrix<float, 1, mtgdraftbots::constants::EMBEDDING_SIZE>( */
+                /*         mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]].data() */
+                /*     ); */
+                /*     ratings[i] = constants::CARD_RATINGS[indices[i]]; */
+                /*     costs.push_back({mtgdraftbots::constants::CARD_CMCS[indices[i]], */
+                /*                      mtgdraftbots::constants::CARD_COST_SYMBOLS[indices[i]]}); */
+                /* } */
             }
             Eigen::ArrayXi indices;
-            Eigen::Matrix<float, Eigen::Dynamic, mtgdraftbots::constants::EMBEDDING_SIZE> embeddings;
+            Eigen::Matrix<float, Eigen::Dynamic, EMBEDDING_SIZE> embeddings;
             Eigen::Matrix<float, Eigen::Dynamic, 1> ratings;
             std::vector<CardCost> costs;
         };
@@ -69,7 +69,7 @@ namespace mtgdraftbots {
         float total_nonland_prob;
         Option option;
         std::string colors;
-        std::map<std::string, int> lands;
+        Lands lands;
         std::vector<float> probabilities;
     };
 
@@ -106,31 +106,32 @@ namespace mtgdraftbots {
         }
 
         inline Eigen::ArrayXi get_card_indices(const std::vector<std::string>& names) {
-            std::vector<int> picked_indices;
-            picked_indices.reserve(names.size());
-            for (size_t i=0; i < names.size(); i++) {
-                const auto iter = mtgdraftbots::constants::CARD_INDICES.find(frozen::string(names[i]));
-                if (iter != mtgdraftbots::constants::CARD_INDICES.end()) {
-                    picked_indices.push_back(iter->second);
-                }
-            }
-            Eigen::ArrayXi result(picked_indices.size());
-            for (size_t i=0; i < picked_indices.size(); i++) {
-                result[i] = picked_indices[i];
-            }
-            return result;
+            return {};
+        /*     std::vector<int> picked_indices; */
+        /*     picked_indices.reserve(names.size()); */
+        /*     for (size_t i=0; i < names.size(); i++) { */
+        /*         const auto iter = mtgdraftbots::constants::CARD_INDICES.find(frozen::string(names[i])); */
+        /*         if (iter != mtgdraftbots::constants::CARD_INDICES.end()) { */
+        /*             picked_indices.push_back(iter->second); */
+        /*         } */
+        /*     } */
+        /*     Eigen::ArrayXi result(picked_indices.size()); */
+        /*     for (size_t i=0; i < picked_indices.size(); i++) { */
+        /*         result[i] = picked_indices[i]; */
+        /*     } */
+        /*     return result; */
         }
     }
 
     // TODO: Make this constexpr
     inline auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
         using namespace internal;
-        const float packFloat = constants::WEIGHT_Y_DIM * static_cast<float>(pack_num) / num_packs;
-        const float pickFloat = constants::WEIGHT_X_DIM * static_cast<float>(pick_num) / num_picks;
+        const float packFloat = WEIGHT_Y_DIM * static_cast<float>(pack_num) / num_packs;
+        const float pickFloat = WEIGHT_X_DIM * static_cast<float>(pick_num) / num_picks;
         const std::size_t packLower = static_cast<std::size_t>(packFloat);
         const std::size_t pickLower = static_cast<std::size_t>(pickFloat);
-        const std::size_t packUpper = std::min(packLower + 1, constants::WEIGHT_Y_DIM - 1);
-        const std::size_t pickUpper = std::min(pickLower + 1, constants::WEIGHT_X_DIM - 1);
+        const std::size_t packUpper = std::min(packLower + 1, WEIGHT_Y_DIM - 1);
+        const std::size_t pickUpper = std::min(pickLower + 1, WEIGHT_X_DIM - 1);
         BotState<std::mt19937_64> bot_state{
             CardValues{internal::get_card_indices(picked)},
             CardValues{internal::get_card_indices(seen)},

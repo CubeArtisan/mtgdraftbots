@@ -1,1 +1,3 @@
-#include "mtgdraftbots/mtgdraftbots.h"
+#include "mtgdraftbots/mtgdraftbots.hpp"
+
+int main() { }
