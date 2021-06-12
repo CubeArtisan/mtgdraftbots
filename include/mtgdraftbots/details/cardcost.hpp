@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
+#include <variant>
 #include <vector>
 
 #include <mpark/variant.hpp>
@@ -47,95 +48,101 @@ namespace mtgdraftbots::internal {
 #endif
     }
 
+#ifdef USE_VECTORCLASS
+    inline auto vcl_sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint32_t {
+        vcl::Vec32uc maskVec;
+        maskVec.load(mask.data());
+        vcl::Vec32uc landsVec;
+        landsVec.load(lands.data());
+        return vcl::horizontal_add_x(maskVec & landsVec);
+    }
+
+    inline auto vcl_operator_or(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
+        LandsMask result;
+        vcl::Vec32uc mask1Vec;
+        mask1Vec.load(mask1.data());
+        vcl::Vec32uc mask2Vec;
+        mask2Vec.load(mask2.data());
+        (mask1Vec | mask2Vec).store(result.data());
+        return result;
+    }
+
+    inline auto vcl_operator_and(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
+        LandsMask result;
+        vcl::Vec32uc mask1Vec;
+        mask1Vec.load(mask1.data());
+        vcl::Vec32uc mask2Vec;
+        mask2Vec.load(mask2.data());
+        (mask1Vec & mask2Vec).store(result.data());
+        return result;
+    }
+
+    inline auto vcl_operator_not(const LandsMask& mask) -> LandsMask {
+        LandsMask result;
+        vcl::Vec32uc maskVec;
+        maskVec.load(mask.data());
+        (~maskVec).store(result.data());
+        return result;
+    }
+#endif
+
     constexpr auto sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint32_t {
 #ifdef USE_VECTORCLASS
-        if (std::is_constant_evaluated()) {
-#endif
-            std::uint64_t result_64 = 0;
-            for (std::uint8_t i = 0; i < 4; i++) {
-                std::uint64_t sub_mask  = internal::bit_cast<std::array<uint64_t, 4>>(mask)[i];
-                std::uint64_t sub_lands = internal::bit_cast<std::array<uint64_t, 4>>(lands)[i];
-                result_64 += sub_mask & sub_lands;
-            }
-            auto result_64s = internal::bit_cast<std::array<uint32_t, 2>>(result_64);
-            auto result_32 = internal::bit_cast<std::array<uint16_t, 2>>(result_64s[0] + result_64s[1]);
-            auto result_16 = internal::bit_cast<std::array<uint8_t, 2>>(static_cast<uint16_t>(result_32[0] + result_32[1]));
-            return result_16[0] + result_16[1];
-#ifdef USE_VECTORCLASS
-        } else {
-            vcl::Vec32uc maskVec;
-            maskVec.load(mask.data());
-            vcl::Vec32uc landsVec;
-            landsVec.load(lands.data());
-            return vcl::horizontal_add_x(maskVec & landsVec);
+        if (!std::is_constant_evaluated()) {
+            return vcl_sum_masked(mask, lands);
         }
 #endif
+        std::uint64_t result_64 = 0;
+        for (std::uint8_t i = 0; i < 4; i++) {
+            std::uint64_t sub_mask  = internal::bit_cast<std::array<uint64_t, 4>>(mask)[i];
+            std::uint64_t sub_lands = internal::bit_cast<std::array<uint64_t, 4>>(lands)[i];
+            result_64 += sub_mask & sub_lands;
+        }
+        auto result_64s = internal::bit_cast<std::array<uint32_t, 2>>(result_64);
+        auto result_32 = internal::bit_cast<std::array<uint16_t, 2>>(result_64s[0] + result_64s[1]);
+        auto result_16 = internal::bit_cast<std::array<uint8_t, 2>>(static_cast<uint16_t>(result_32[0] + result_32[1]));
+        return result_16[0] + result_16[1];
     }
 
     constexpr auto operator|(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
 #ifdef USE_VECTORCLASS
         if (std::is_constant_evaluated()) {
-#endif
-            std::array<std::uint64_t, 4> result;
-            for (std::uint8_t i=0; i < 4; i++) {
-                result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
-                    | internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
-            }
-            return internal::bit_cast<LandsMask>(result);
-#if USE_VECTORCLASS
-        } else {
-            LandsMask result;
-            vcl::Vec32uc mask1Vec;
-            mask1Vec.load(mask1.data());
-            vcl::Vec32uc mask2Vec;
-            mask2Vec.load(mask2.data());
-            (mask1Vec | mask2Vec).store(result.data());
-            return result;
+            return vcl_operator_or(mask1, mask2);
         }
 #endif
+        std::array<std::uint64_t, 4> result;
+        for (std::uint8_t i=0; i < 4; i++) {
+            result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
+                | internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
+        }
+        return internal::bit_cast<LandsMask>(result);
     }
 
     constexpr auto operator&(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
 #ifdef USE_VECTORCLASS
-        if (std::is_constant_evaluated()) {
-#endif
-            std::array<std::uint64_t, 4> result;
-            for (std::uint8_t i=0; i < 4; i++) {
-                result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
-                    & internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
-            }
-            return internal::bit_cast<LandsMask>(result);
-#if USE_VECTORCLASS
-        } else {
-            LandsMask result;
-            vcl::Vec32uc mask1Vec;
-            mask1Vec.load(mask1.data());
-            vcl::Vec32uc mask2Vec;
-            mask2Vec.load(mask2.data());
-            (mask1Vec & mask2Vec).store(result.data());
-            return result;
+        if (!std::is_constant_evaluated()) {
+            return vcl_operator_and(mask1, mask2);
         }
 #endif
+        std::array<std::uint64_t, 4> result;
+        for (std::uint8_t i=0; i < 4; i++) {
+            result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
+                & internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
+        }
+        return internal::bit_cast<LandsMask>(result);
     }
 
     constexpr auto operator~(const LandsMask& mask) -> LandsMask {
 #ifdef USE_VECTORCLASS
-        if (std::is_constant_evaluated()) {
-#endif
-            std::array<std::uint64_t, 4> result;
-            for (std::uint8_t i=0; i < 4; i++) {
-                result[i] = ~internal::bit_cast<std::array<std::uint64_t, 4>>(mask)[i];
-            }
-            return internal::bit_cast<LandsMask>(result);
-#if USE_VECTORCLASS
-        } else {
-            LandsMask result;
-            vcl::Vec32uc maskVec;
-            mask1Vec.load(mask.data());
-            (~mask1Vec).store(result.data());
-            return result;
+        if (!std::is_constant_evaluated()) {
+            return vcl_operator_not(mask);
         }
 #endif
+        std::array<std::uint64_t, 4> result;
+        for (std::uint8_t i=0; i < 4; i++) {
+            result[i] = ~internal::bit_cast<std::array<std::uint64_t, 4>>(mask)[i];
+        }
+        return internal::bit_cast<LandsMask>(result);
     }
 
     // This doesn't make the code faster to template, but makes some things cleaner.
@@ -251,10 +258,6 @@ namespace mtgdraftbots::internal {
         std::array<ManaRequirements<1>, n + 1> sub_requirements;
     };
 
-    constexpr auto my_toupper(char ch) noexcept -> char {
-        return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    }
-
     using RequirementVariant = mpark::variant<ManaRequirements<0>, ManaRequirements<1>,
                                               ManaRequirements<2>, ManaRequirements<3>,
                                               ManaRequirements<4>, ManaRequirements<5>>;
@@ -329,25 +332,27 @@ namespace mtgdraftbots::internal {
         return ManaRequirements<0>();
     }
 
-    struct CardCost {
+    struct CardCost : public RequirementVariant {
         constexpr auto calculate_probability(const Lands& lands) const -> float {
             return visit([&lands](const auto& requirement) { return requirement.calculate_probability(lands); },
-                         inner_requirement);
+                         *this);
         }
 
         constexpr CardCost(const CardDetails& card) noexcept
-                : inner_requirement(get_requirement(card.cmc, card.cost_symbols))
+                : RequirementVariant(get_requirement(card.cmc, card.cost_symbols))
         { }
 
-        constexpr CardCost(const CardCost&) noexcept = default;
-        constexpr CardCost& operator=(const CardCost&) noexcept = default;
-        constexpr CardCost(CardCost&&) noexcept = default;
-        constexpr CardCost& operator=(CardCost&&) noexcept = default;
+        using RequirementVariant::RequirementVariant;
+        using RequirementVariant::operator=;
 
-        constexpr bool operator==(const CardCost& other) const noexcept = default;
-
-    private:
-        RequirementVariant inner_requirement;
+        constexpr bool operator==(const RequirementVariant& other) const noexcept {
+            if (this->index() != other.index()) return false;
+            if (this->index() == std::variant_npos) return true;
+            return mpark::visit([](const auto& req1, const auto& req2) {
+                if constexpr (std::is_same_v<decltype(req1), decltype(req2)>) return req1 == req2;
+                else return false;
+            }, *this, other);
+        }
     };
 }
 

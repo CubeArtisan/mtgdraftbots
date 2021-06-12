@@ -1,6 +1,7 @@
 build*/
 callgrind.out.*
 data/
+data
 nsight/
 output/
 vgcore.*

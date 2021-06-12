@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,11 +45,11 @@ namespace mtgdraftbots {
         Embedding embedding;
         float rating;
         std::uint8_t cmc;
-        std::optional<std::uint8_t> produces;
+        std::optional<std::array<bool, 5>> produces;
     };
 
-    constexpr std::size_t WEIGHT_X_DIM = 15;
-    constexpr std::size_t WEIGHT_Y_DIM = 3;
+    constexpr std::size_t WEIGHT_X_DIM = 3;
+    constexpr std::size_t WEIGHT_Y_DIM = 15;
     using Weights = std::array<std::array<float, WEIGHT_Y_DIM>, WEIGHT_X_DIM>;
 }
 #endif

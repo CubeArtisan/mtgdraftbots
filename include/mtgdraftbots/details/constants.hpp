@@ -21,11 +21,11 @@ namespace mtgdraftbots::constants {
     constexpr std::size_t NUM_COUNT_AB = 1 << COUNT_DIMS_EXP;
     constexpr std::size_t NUM_REQUIRED_B = 4;
     constexpr std::size_t NUM_REQUIRED_A = 7;
-    constexpr std::size_t NUM_CMC = 11;
-    constexpr std::size_t PROB_TABLE_SIZE =  NUM_COUNT_A * NUM_COUNT_B * NUM_COUNT_AB\
+    constexpr std::size_t NUM_CMC = 9;
+    constexpr std::size_t PROB_TABLE_SIZE =  NUM_COUNT_A * NUM_COUNT_B * NUM_COUNT_AB
                                            * NUM_REQUIRED_B * NUM_REQUIRED_A * NUM_CMC;
-    // TODO: Find way to initialize this from a file, maybe just include a generated file.
-    constexpr std::array<float, PROB_TABLE_SIZE> PROB_TABLE{};
+
+#include "mtgdraftbots/generated/prob_table.hpp"
 
     constexpr auto COLOR_TO_INDEX = frozen::make_unordered_map<char, std::uint8_t>({
         {'W', 0},
@@ -73,5 +73,10 @@ namespace mtgdraftbots::constants {
         {true, true, true, true, false},
         {true, true, true, true, true},
     }};
+
+    constexpr std::size_t get_color_combination_index(const std::array<bool, 5>& comb) noexcept {
+        return std::distance(std::begin(COLOR_COMBINATIONS),
+                             std::find(std::begin(COLOR_COMBINATIONS), std::end(COLOR_COMBINATIONS), comb));
+    }
 }
 #endif

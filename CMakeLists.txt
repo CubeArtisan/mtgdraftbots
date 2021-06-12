@@ -24,7 +24,6 @@ macro (ADD_FLAG_IF_AVAIL TARGET_NAME ACCESS_MODIFIER FLAG)
     # runs check to see flag is supported by compiler
     check_cxx_compiler_flag ("${FLAG}" ${FLAG_NAME})
     if (${FLAG_NAME})
-      message("${FLAG} was available.")
       target_compile_options (${TARGET_NAME} ${ACCESS_MODIFIER} $<$<COMPILE_LANGUAGE:CXX>:${FLAG}>)
     endif ()
   endif ()
@@ -50,6 +49,8 @@ conan_cmake_configure (
     mpark-variant/1.4.0
     vectorclass/2.01.03
     simdjson/0.9.5
+    concurrentqueue/1.0.2
+    fmt/7.1.3
   GENERATORS cmake_find_package_multi
 )
 
@@ -67,6 +68,7 @@ add_library (MtgDraftBots INTERFACE
   "include/mtgdraftbots/details/cardcost.hpp"
   "include/mtgdraftbots/details/constants.hpp"
   "include/mtgdraftbots/details/types.hpp"
+  "include/mtgdraftbots/generated/prob_table.hpp"
 )
 
 option (USE_VECTORCLASS "Use Vectorclass to automatically run with SIMD instructions if available" ON)
@@ -80,25 +82,23 @@ set_target_properties (MtgDraftBots PROPERTIES CXX_STANDARD 20
                                                CXX_EXTENSIONS OFF)
 
 find_package (frozen CONFIG REQUIRED)
-target_link_libraries (MtgDraftBots INTERFACE frozen::frozen)
-
 find_package (Eigen3 CONFIG REQUIRED)
-target_link_libraries (MtgDraftBots INTERFACE Eigen3::Eigen)
-
 find_package (mpark_variant CONFIG REQUIRED)
-target_link_libraries (MtgDraftBots INTERFACE mpark_variant::mpark_variant)
-
-find_package (simdjson CONFIG REQUIRED)
-target_link_libraries (MtgDraftBots INTERFACE simdjson::simdjson)
+find_package (fmt CONFIG REQUIRED)
+target_link_libraries (MtgDraftBots INTERFACE mpark_variant::mpark_variant Eigen3::Eigen frozen::frozen fmt::fmt)
 
 if (USE_VECTORCLASS)
   find_package (Vectorclass CONFIG REQUIRED)
   target_link_libraries (MtgDraftBots INTERFACE vectorclass::vectorclass)
   target_compile_definitions (MtgDraftBots INTERFACE VCL_NAMESPACE=vcl USE_VECTORCLASS)
-endif()
+endif ()
 
-add_flag_if_avail (MtgDraftBots INTERFACE -march=native)
-add_flag_if_avail (MtgDraftBots INTERFACE /march:AVX2)
+include (CMakePackageConfigHelpers)
+write_basic_package_version_file (
+  "${PROJECT_BINARY_DIR}/MtgDraftBotsConfigVersion.cmake"
+  VERSION 0.0.1
+  COMPATIBILITY AnyNewerVersion
+)
 
 # This is used for getting compile_commands.json
 add_executable (MtgDraftBotsTemp "src/temp.cpp")
@@ -106,3 +106,15 @@ target_link_libraries (MtgDraftBotsTemp PUBLIC MtgDraftBots)
 add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wall)
 add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wextra)
 add_flag_if_avail (MtgDraftBotsTemp PRIVATE /W4)
+
+add_executable (ParsePicks "src/parse_picks.cpp")
+find_package (simdjson CONFIG REQUIRED)
+find_package (concurrentqueue CONFIG REQUIRED)
+target_link_libraries (ParsePicks PUBLIC MtgDraftBots simdjson::simdjson concurrentqueue::concurrentqueue)
+add_flag_if_avail (ParsePicks PRIVATE -Wall)
+add_flag_if_avail (ParsePicks PRIVATE -Wextra)
+add_flag_if_avail (ParsePicks PRIVATE /W4)
+add_flag_if_avail (ParsePicks PRIVATE -march=native)
+add_flag_if_avail (ParsePicks PRIVATE -ffast-math)
+add_flag_if_avail (ParsePicks PRIVATE /march:AVX2)
+add_flag_if_avail (ParsePicks PRIVATE -fdiagnostics-color)
