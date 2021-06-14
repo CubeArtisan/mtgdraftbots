@@ -168,9 +168,18 @@ namespace mtgdraftbots::internal {
         constexpr ManaRequirements(std::size_t combIndex, std::size_t devotionCount,
                                    std::size_t cmc) noexcept
                 : valid_lands{MASK_BY_COMB_INDEX[combIndex]},
-                  offset(((cmc * constants::NUM_REQUIRED_A + devotionCount) * constants::NUM_REQUIRED_B)
+                  offset(((std::min(cmc,constants::NUM_CMC - 1) * constants::NUM_REQUIRED_A
+                                  + std::min(devotionCount,constants::NUM_REQUIRED_A - 1)) * constants::NUM_REQUIRED_B)
                          << (3 * constants::COUNT_DIMS_EXP))
         { }
+
+        constexpr ManaRequirements(const LandsMask& mask, std::size_t devotionCount, std::size_t cmc) noexcept
+                : valid_lands{mask},
+                  offset(((std::min(cmc,constants::NUM_CMC - 1) * constants::NUM_REQUIRED_A
+                                  + std::min(devotionCount,constants::NUM_REQUIRED_A - 1)) * constants::NUM_REQUIRED_B)
+                         << (3 * constants::COUNT_DIMS_EXP))
+        { }
+
 
         constexpr ManaRequirements() noexcept = default;
         constexpr ManaRequirements(const ManaRequirements&) noexcept = default;
@@ -205,8 +214,9 @@ namespace mtgdraftbots::internal {
                 : valid_lands_a(MASK_BY_COMB_INDEX[combAIndex] & ~MASK_BY_COMB_INDEX[combBIndex]),
                   valid_lands_b(MASK_BY_COMB_INDEX[combBIndex] & ~MASK_BY_COMB_INDEX[combAIndex]),
                   valid_lands_ab(MASK_BY_COMB_INDEX[combAIndex] | MASK_BY_COMB_INDEX[combBIndex]),
-                  offset(((cmc * constants::NUM_REQUIRED_A + devotionACount) * constants::NUM_REQUIRED_B
-                              + devotionBCount) << (3 * constants::COUNT_DIMS_EXP)) {
+                  offset(((std::min(cmc,constants::NUM_CMC - 1) * constants::NUM_REQUIRED_A 
+                                  + std::min(devotionACount,constants::NUM_REQUIRED_A - 1)) * constants::NUM_REQUIRED_B
+                              + std::min(devotionBCount,constants::NUM_REQUIRED_B - 1)) << (3 * constants::COUNT_DIMS_EXP)) {
             if (devotionACount < devotionBCount) {
                 *this = ManaRequirements(combBIndex, devotionBCount, combAIndex, devotionACount, cmc);
             }
@@ -237,7 +247,7 @@ namespace mtgdraftbots::internal {
         }
 
         constexpr ManaRequirements(const std::array<std::pair<std::size_t, std::size_t>, n>& devotions,
-                                   std::size_t cmc) {
+                                   std::size_t cmc) noexcept {
             LandsMask combined_mask{Mask::OFF};
             std::size_t total_devotion = 0;
             for (size_t i=0; i < n; i++) {
@@ -246,6 +256,7 @@ namespace mtgdraftbots::internal {
                 sub_requirements[i] = ManaRequirements<1>(comb_index, devotion_count, cmc);
                 combined_mask = combined_mask | sub_requirements[i].valid_lands;
             }
+            sub_requirements[n] = ManaRequirements<1>(combined_mask, total_devotion, cmc);
         }
         constexpr ManaRequirements() noexcept = default;
         constexpr ManaRequirements(const ManaRequirements&) noexcept = default;
