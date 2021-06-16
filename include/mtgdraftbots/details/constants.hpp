@@ -1,7 +1,7 @@
 #ifndef MTGDRAFTBOTS_CONSTANTS_H
 #define MTGDRAFTBOTS_CONSTANTS_H
 #include <array>
-#include <bits/c++config.h>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
@@ -74,7 +74,7 @@ namespace mtgdraftbots::constants {
         {true, true, true, true, true},
     }};
 
-    constexpr std::size_t get_color_combination_index(const std::array<bool, 5>& comb) noexcept {
+    constexpr std::ptrdiff_t get_color_combination_index(const std::array<bool, 5>& comb) noexcept {
         return std::distance(std::begin(COLOR_COMBINATIONS),
                              std::find(std::begin(COLOR_COMBINATIONS), std::end(COLOR_COMBINATIONS), comb));
     }

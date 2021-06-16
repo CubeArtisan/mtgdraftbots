@@ -3,7 +3,6 @@
 
 #include <array>
 #include <bit>
-#include <bits/c++config.h>
 #include <cstring>
 #include <cstdint>
 #include <frozen/string.h>
@@ -34,7 +33,7 @@ namespace mtgdraftbots {
                   embeddings(indices.rows(), 64),
                   ratings(indices.rows())
             {
-                costs.reserve(indices.rows());
+                costs.reserve(static_cast<std::size_t>(indices.rows()));
                 /* for (std::size_t i=0; i < indices.rows(); i++) { */
                 /*     embeddings.row(i) = Eigen::Matrix<float, 1, mtgdraftbots::constants::EMBEDDING_SIZE>( */
                 /*         mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]].data() */
@@ -44,6 +43,10 @@ namespace mtgdraftbots {
                 /*                      mtgdraftbots::constants::CARD_COST_SYMBOLS[indices[i]]}); */
                 /* } */
             }
+            CardValues(const CardValues&) = default;
+            CardValues& operator=(const CardValues&) = default;
+            CardValeus(CardValues&&) = default;
+            CardValues& operator=(CardValues&&) = default;
             Eigen::ArrayXi indices;
             Eigen::Matrix<float, Eigen::Dynamic, EMBEDDING_SIZE> embeddings;
             Eigen::Matrix<float, Eigen::Dynamic, 1> ratings;
@@ -65,8 +68,8 @@ namespace mtgdraftbots {
     struct BotScore {
         DrafterState drafter_state;
         float score;
-        std::array<OracleResult, oracles::ORACLES.size()> oracle_results;
         float total_nonland_prob;
+        std::array<OracleResult, oracles::ORACLES.size()> oracle_results;
         Option option;
         std::string colors;
         Lands lands;

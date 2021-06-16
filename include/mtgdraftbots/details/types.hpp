@@ -9,7 +9,7 @@
 
 namespace mtgdraftbots {
     using Lands = std::array<std::uint8_t, 32>;
-    using Coord = std::pair<float, float>;
+    using Coord = std::pair<std::uint8_t, std::uint8_t>;
     using Option = std::vector<std::uint8_t>;
 
     struct BotScore;
@@ -36,16 +36,16 @@ namespace mtgdraftbots {
         std::vector<float> per_card;
     };
 
-    constexpr size_t EMBEDDING_SIZE = 64;
+    constexpr size_t EMBEDDING_SIZE{ 64 };
     using Embedding = std::array<float, 64>;
 
     struct CardDetails {
         std::string name;
         std::vector<std::string> cost_symbols;
         Embedding embedding;
-        float rating;
-        std::uint8_t cmc;
         std::optional<std::array<bool, 5>> produces;
+        std::uint8_t cmc;
+        float rating;
     };
 
     constexpr std::size_t WEIGHT_X_DIM = 3;

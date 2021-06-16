@@ -110,8 +110,8 @@ std::map<std::string, mtgdraftbots::CardDetails> load_card_details(const std::st
         std::size_t cmc = 0;
         if (card["cmc"].get(cmc)) cmc = 0;
         result.try_emplace(std::string{name_lower},
-                           std::string{name_lower}, cost_symbols, mtgdraftbots::Embedding{0.f},
-                           1200.f, static_cast<std::uint8_t>(cmc), produces);
+                           std::string{name_lower}, cost_symbols, mtgdraftbots::Embedding{0.f}, produces, static_cast<std::uint8_t>(cmc),
+                           1200.f);
     }
     std::cout << "Loaded all card details." << std::endl;
     return result;
@@ -196,7 +196,7 @@ struct Pick {
         mtgdraftbots::Lands result{0, 17, 17, 17, 17, 17, 0};
         for (std::uint16_t i=0; i < num_picked; i++) {
             if (card_details[picked[i]]->produces) {
-                result[mtgdraftbots::constants::get_color_combination_index(card_details[picked[i]]->produces.value())]++;
+                result[static_cast<std::size_t>(mtgdraftbots::constants::get_color_combination_index(card_details[picked[i]]->produces.value()))]++;
             }
         }
         return result;
@@ -209,6 +209,14 @@ struct Pick {
         using ScoreValue = std::tuple<float, std::array<float, MAX_IN_PACK>,
                                       std::array<float, MAX_PICKED>, std::array<float, MAX_SEEN>,
                                       mtgdraftbots::Lands>;
+        std::array<std::array<std::uint8_t, 5>, NUM_LAND_COMBS> found_values{ {{ 0 }} };
+        constexpr std::array<mtgdraftbots::internal::LandsMask, 5> masks{
+            mtgdraftbots::internal::MASK_BY_COMB_INDEX[1],
+            mtgdraftbots::internal::MASK_BY_COMB_INDEX[2],
+            mtgdraftbots::internal::MASK_BY_COMB_INDEX[3],
+            mtgdraftbots::internal::MASK_BY_COMB_INDEX[4],
+            mtgdraftbots::internal::MASK_BY_COMB_INDEX[5],
+        };
         const mtgdraftbots::Lands available_lands = get_available_lands(card_details);
         std::array<mtgdraftbots::internal::CardCost, MAX_IN_PACK> in_pack_costs{};
         std::array<mtgdraftbots::internal::CardCost, MAX_PICKED> picked_costs{};
@@ -248,6 +256,20 @@ struct Pick {
                         if (decrease == increase || std::get<mtgdraftbots::Lands>(prev_score)[decrease] == 0) continue;
                         ScoreValue new_score = prev_score;
                         mtgdraftbots::Lands& new_lands = std::get<mtgdraftbots::Lands>(new_score);
+                        std::transform(std::begin(masks), std::end(masks), std::begin(found_values[i]),
+                            [&](const mtgdraftbots::internal::LandsMask& mask) { return mtgdraftbots::internal::sum_masked(mask, new_lands); });
+                        bool too_close = false;
+                        for (std::size_t j = 0; j < i; j++) {
+                            std::int8_t difference = 0;
+                            for (std::size_t k = 0; k < found_values[i].size(); k++) {
+                                difference += std::abs(found_values[j][k] - found_values[i][k]);
+                            }
+                            if (difference < 5) {
+                                too_close = true;
+                                break;
+                            }
+                        }
+                        if (too_close) continue;
                         new_lands[increase]++;
                         new_lands[decrease]--;
                         const auto transformation = [&new_lands](const mtgdraftbots::internal::CardCost& cost){ return cost.calculate_probability(new_lands); };
@@ -257,18 +279,49 @@ struct Pick {
                         float max_in_pack_prob = std::reduce(std::execution::unseq, std::begin(std::get<1>(new_score)),
                                                              std::begin(std::get<1>(new_score)) + num_in_pack,
                                                              0.f, [](auto a, auto b){ return std::max(a, b); });
+                        float min_in_pack_prob = std::reduce(std::execution::unseq, std::begin(std::get<1>(new_score)),
+                                                             std::begin(std::get<1>(new_score)) + num_in_pack,
+                                                             1.f, [](auto a, auto b) { return std::min(a, b); });
                         float sum_picked_probs = std::reduce(std::execution::unseq, std::begin(std::get<2>(new_score)),
                                                              std::begin(std::get<2>(new_score)) + num_picked);
                         float mean_seen_probs = std::reduce(std::execution::unseq, std::begin(std::get<3>(new_score)),
                                                             std::begin(std::get<3>(new_score)) + num_seen) / num_seen;
-                        std::get<float>(new_score) = sum_picked_probs + 3 * mean_seen_probs + 5 * max_in_pack_prob;
+                        std::get<float>(new_score) = sum_picked_probs + 3 * mean_seen_probs + 5 * max_in_pack_prob + 2 * min_in_pack_prob;
                         if (std::get<float>(new_score) > std::get<float>(current_score)) current_score = new_score;
                     }
                 }
             }
-            for (std::size_t j=0; j < num_in_pack; j++) in_pack_probs[j][i] = std::get<1>(current_score)[j] * std::numeric_limits<typename CardProbabilities::value_type>::max();
-            for (std::size_t j=0; j < num_picked; j++) picked_probs[j][i] = std::get<2>(current_score)[j] * std::numeric_limits<typename CardProbabilities::value_type>::max();
-            for (std::size_t j=0; j < num_seen; j++) seen_probs[j][i] = std::get<3>(current_score)[j] * std::numeric_limits<typename CardProbabilities::value_type>::max();
+            using ProbType = typename CardProbabilities::value_type;
+            for (std::size_t j=0; j < num_in_pack; j++) in_pack_probs[j][i] = static_cast<ProbType>(std::get<1>(current_score)[j] * std::numeric_limits<ProbType>::max());
+            for (std::size_t j=0; j < num_picked; j++) picked_probs[j][i] = static_cast<ProbType>(std::get<2>(current_score)[j] * std::numeric_limits<ProbType>::max());
+            for (std::size_t j=0; j < num_seen; j++) seen_probs[j][i] = static_cast<ProbType>(std::get<3>(current_score)[j] * std::numeric_limits<ProbType>::max());
+        }
+    }
+
+    void verify_counts(std::string_view source, const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) const {
+        if (num_in_pack > in_pack.size()) {
+            std::cerr << "Error in " << source << ". Num_in_pack was: " << num_in_pack << std::endl;
+        }
+        if (num_picked > picked.size()) {
+            std::cerr << "Error in " << source << ". Num_picked was: " << num_picked << std::endl;
+        }
+        if (num_seen > seen.size()) {
+            std::cerr << "Error in " << source << ". Num_seen was: " << num_seen << std::endl;
+        }
+        for (std::size_t i = 0; i < num_in_pack; i++) {
+            if (in_pack[i] >= card_details.size()) {
+                std::cerr << "Error in " << source << ". Card index " << in_pack[i] << " was too large and in in_pack." << std::endl;
+            }
+        }
+        for (std::size_t i = 0; i < num_picked; i++) {
+            if (picked[i] >= card_details.size()) {
+                std::cerr << "Error in " << source << ". Card index " << picked[i] << " was too large and in picked." << std::endl;
+            }
+        }
+        for (std::size_t i = 0; i < num_seen; i++) {
+            if (seen[i] >= card_details.size()) {
+                std::cerr << "Error in " << source << ". Card index " << seen[i] << " was too large and in seen." << std::endl;
+            }
         }
     }
 };
@@ -336,7 +389,7 @@ bool load_chosen_card(std::array<std::uint16_t, MAX_IN_PACK>& in_pack, std::uint
     // Remove duplicates from the pack since they aren't helpful for training.
     std::sort(std::begin(in_pack), std::begin(in_pack) + num_in_pack);
     auto iter = std::unique(std::begin(in_pack), std::begin(in_pack) + num_in_pack);
-    const std::size_t new_num_in_pack = std::distance(std::begin(in_pack), iter);
+    const std::uint8_t new_num_in_pack = static_cast<std::uint8_t>(std::distance(std::begin(in_pack), iter));
     std::fill(iter, std::begin(in_pack) + num_in_pack, 0);
     num_in_pack = new_num_in_pack;
 
@@ -366,11 +419,11 @@ constexpr void calculate_coord_info(std::array<std::array<std::uint8_t, 2>, 4>& 
                                     std::uint8_t pack_num, std::uint8_t num_packs,
                                     std::uint8_t pick_num, std::uint8_t num_picks) noexcept {
     const float pack_float = (static_cast<float>(mtgdraftbots::WEIGHT_X_DIM) * pack_num) / num_packs;
-    const std::uint8_t pack_0 = static_cast<std::size_t>(pack_float);
+    const std::uint8_t pack_0 = static_cast<std::uint8_t>(pack_float);
     const std::uint8_t pack_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::WEIGHT_X_DIM - 1), static_cast<std::uint8_t>(pack_0 + 1));
     const float pack_frac = pack_float - pack_0;
     const float pick_float = (static_cast<float>(mtgdraftbots::WEIGHT_Y_DIM) * pick_num) / num_picks;
-    const std::uint8_t pick_0 = static_cast<std::size_t>(pick_float);
+    const std::uint8_t pick_0 = static_cast<std::uint8_t>(pick_float);
     const std::uint8_t pick_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::WEIGHT_Y_DIM - 1), static_cast<std::uint8_t>(pick_0 + 1));
     const float pick_frac = pick_float - pick_0;
     coords = {{{pack_0, pick_0}, {pack_0, pick_1}, {pack_1, pick_0}, {pack_1, pick_1}}};
@@ -397,6 +450,58 @@ bool load_coord_info(std::array<std::array<std::uint8_t, 2>, 4>& coords,
     calculate_coord_info(coords, coord_weights, pack_num, num_packs, pick_num, num_picks);
     return true;
 }
+
+char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
+    for (std::size_t i = 0; i < 4; i++) {
+        for (std::size_t j = 0; j < 2; j++) {
+
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.coords[i][j];
+            current_pos += sizeof(std::uint8_t);
+        }
+    }
+    for (std::size_t i = 0; i < 4; i++) {
+        *reinterpret_cast<float*>(current_pos) = pick.coord_weights[i];
+        current_pos += sizeof(float);
+    }
+    *reinterpret_cast<std::uint16_t*>(current_pos) = pick.num_in_pack;
+    current_pos += sizeof(std::uint16_t);
+    *reinterpret_cast<std::uint16_t*>(current_pos) = pick.num_picked;
+    current_pos += sizeof(std::uint16_t);
+    *reinterpret_cast<std::uint16_t*>(current_pos) = pick.num_seen;
+    current_pos += sizeof(std::uint16_t);
+    for (std::uint16_t i = 0; i < pick.num_in_pack; i++) {
+        *reinterpret_cast<std::uint16_t*>(current_pos) = pick.in_pack[i];
+        current_pos += sizeof(std::uint16_t);
+    }
+    for (std::uint16_t i = 0; i < pick.num_in_pack; i++) {
+        for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.in_pack_probs[j][i];
+            current_pos += sizeof(std::uint8_t);
+        }
+    }
+    for (std::uint16_t i = 0; i < pick.num_picked; i++) {
+        *reinterpret_cast<std::uint16_t*>(current_pos) = pick.picked[i];
+        current_pos += sizeof(std::uint16_t);
+    }
+    for (std::uint16_t i = 0; i < pick.num_picked; i++) {
+        for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.picked_probs[j][i];
+            current_pos += sizeof(std::uint8_t);
+        }
+    }
+    for (std::uint16_t i = 0; i < pick.num_seen; i++) {
+        *reinterpret_cast<std::uint16_t*>(current_pos) = pick.seen[i];
+        current_pos += sizeof(std::uint16_t);
+    }
+    for (std::uint16_t i = 0; i < pick.num_seen; i++) {
+        for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.seen_probs[j][i];
+            current_pos += sizeof(std::uint8_t);
+        }
+    }
+    return current_pos;
+}
+
 
 void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details,
                           const std::vector<std::optional<mtgdraftbots::internal::CardCost>>& card_costs,
@@ -444,6 +549,7 @@ void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDeta
                                         pick_json["packSize"])) continue;
                 current_pick.generate_probs(card_details, card_costs, rng);
                 num_valid_in_file++;
+                current_pick.verify_counts("parse_pick", card_details);
                 processed_picks.enqueue(processed_picks_producer, current_pick);
             }
         }
@@ -451,62 +557,68 @@ void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDeta
         const std::size_t new_num_picks = (num_picks += num_picks_in_file);
         const std::size_t new_num_drafts = (num_drafts += num_drafts_in_file);
         fmt::print(
-            FMT_STRING("Finished file: {: >3d} which had {: >10L} out of {: >10L}({: >5.2L}%) usable picks from {: >7L} drafts.\n\tThis puts it to {: >10L} out of {: >10L}({: >5.2L}%) usable picks from {: >7L} drafts.\n"),
-            (++num_finished_files), num_valid_in_file, num_picks_in_file, (100.f * num_valid_in_file) / num_picks_in_file,
-            num_drafts_in_file, new_num_valid, new_num_picks, (100.f * new_num_valid) / new_num_picks, new_num_drafts
+            FMT_STRING("Finished file: {: >3d} which had {: >7L} out of {: >7L}({: >5.4L}%) usable picks from {: >5L} drafts.\n\tThis puts it to {: >10L} out of {: >10L}({: >5.2L}%) usable picks from {: >7L} drafts.\n"),
+            (++num_finished_files), num_valid_in_file, num_picks_in_file, (100.0 * num_valid_in_file) / num_picks_in_file,
+            num_drafts_in_file, new_num_valid, new_num_picks, (100.0 * new_num_valid) / new_num_picks, new_num_drafts
         );
     }
+}
+
+constexpr std::size_t shuffle_buffer_size = 1ull << 20;
+
+void shuffle_worker(std::stop_token stop_tkn,
+                    moodycamel::BlockingConcurrentQueue<Pick>& processed_picks,
+                    moodycamel::BlockingConcurrentQueue<Pick>& shuffled_picks,
+                    const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) {
+    std::mt19937_64 rng(random_seed_seq::get_instance());
+    moodycamel::ConsumerToken processed_picks_consumer(processed_picks);
+    moodycamel::ProducerToken shuffled_picks_producer(shuffled_picks);
+    std::vector<Pick> shuffle_buffer;
+    shuffle_buffer.reserve(shuffle_buffer_size);
+    std::uniform_int_distribution<std::size_t> index_selector(0, shuffle_buffer_size - 1);
+    while (shuffle_buffer_size > shuffle_buffer.size() && !stop_tkn.stop_requested()) {
+        processed_picks.wait_dequeue_bulk_timed(processed_picks_consumer, std::back_inserter(shuffle_buffer), shuffle_buffer_size - shuffle_buffer.size(), 100'000);
+    }
+    while (!stop_tkn.stop_requested()) {
+        std::size_t index = index_selector(rng);
+        Pick to_enqueue = shuffle_buffer[index];
+        to_enqueue.verify_counts("shuffle_pop", card_details);
+        shuffled_picks.enqueue(shuffled_picks_producer, to_enqueue);
+        while (!processed_picks.wait_dequeue_timed(processed_picks_consumer, shuffle_buffer[index], 10'000)
+            && !stop_tkn.stop_requested()) { }
+        shuffle_buffer[index].verify_counts("shuffle_push", card_details);
+    }
+    shuffled_picks.enqueue_bulk(shuffled_picks_producer, std::begin(shuffle_buffer), shuffle_buffer.size());
 }
 
 constexpr std::int64_t TIMEOUT_USECS = 500'000; // 500 milliseconds
 constexpr std::size_t MIN_FILE_SIZE = 128 * 1024 * 1024; // 128 MB
 
-template<typename T> requires std::is_trivially_copyable_v<T>
-std::size_t write_value(std::ofstream& file_stream, const T& value) {
-    std::size_t size = sizeof(T);
-    if (size == 0) return 0;
-    file_stream.write(reinterpret_cast<const char*>(&value), size);
-    return size;
-}
-
-template<typename T> requires std::ranges::contiguous_range<T> and std::is_trivially_copyable_v<typename T::value_type>
-std::size_t write_range(std::ofstream& file_stream, const T& value, std::uint16_t num_values) {
-    std::size_t size = sizeof(typename T::value_type) * num_values;
-    if (size == 0) return 0;
-    file_stream.write(reinterpret_cast<const char*>(value.data()), size);
-    return size;
-}
-
 void save_picks(std::stop_token stop_tkn,
-                moodycamel::BlockingConcurrentQueue<Pick>& processed_picks,
+                moodycamel::BlockingConcurrentQueue<Pick>& shuffled_picks,
                 std::atomic<std::size_t>& file_count,
-                std::string_view destination_format_string) {
-    moodycamel::ConsumerToken processed_picks_consumer(processed_picks);
+                std::string_view destination_format_string,
+                const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) {
+    std::array<char, sizeof(Pick)> prep_buffer{ 0 };
+    moodycamel::ConsumerToken shuffled_picks_consumer(shuffled_picks);
     Pick current_pick;
     std::ofstream current_file(fmt::format(destination_format_string, ++file_count), std::ios::binary);
-    std::size_t current_file_size{0};
-    while(!stop_tkn.stop_requested()) {
-        if (processed_picks.wait_dequeue_timed(processed_picks_consumer, current_pick, TIMEOUT_USECS)) {
+    std::size_t current_file_size{ 0 };
+    while (!stop_tkn.stop_requested() || shuffled_picks.size_approx() > 0) {
+        if(shuffled_picks.wait_dequeue_timed(shuffled_picks_consumer, current_pick, TIMEOUT_USECS)) {
+            current_pick.verify_counts("save_pick", card_details);
+            char* end_pick = write_pick_to_buffer(prep_buffer.data(), current_pick);
+            std::size_t pick_record_size = end_pick - prep_buffer.data();
+            current_file.write(prep_buffer.data(), pick_record_size);
+            current_file_size += pick_record_size;
             if (current_file_size > MIN_FILE_SIZE) {
                 current_file.flush();
-                current_file = std::ofstream(fmt::format(destination_format_string, ++file_count));
+                current_file = std::ofstream(fmt::format(destination_format_string, ++file_count), std::ios::binary);
                 current_file_size = 0;
             }
-            std::size_t pick_record_size = 0;
-            pick_record_size += write_value(current_file, current_pick.coords);
-            pick_record_size += write_value(current_file, current_pick.coord_weights);
-            pick_record_size += write_value(current_file, current_pick.num_in_pack);
-            pick_record_size += write_value(current_file, current_pick.num_picked);
-            pick_record_size += write_value(current_file, current_pick.num_seen);
-            pick_record_size += write_range(current_file, current_pick.in_pack, current_pick.num_in_pack);
-            pick_record_size += write_range(current_file, current_pick.in_pack_probs, current_pick.num_in_pack);
-            pick_record_size += write_range(current_file, current_pick.picked, current_pick.num_picked);
-            pick_record_size += write_range(current_file, current_pick.picked_probs, current_pick.num_picked);
-            pick_record_size += write_range(current_file, current_pick.seen, current_pick.num_seen);
-            pick_record_size += write_range(current_file, current_pick.seen_probs, current_pick.num_seen);
-            current_file_size += pick_record_size;
         }
     }
+    current_file.flush();
 }
 
 std::set<std::string, std::less<>> filter_invalid_deckids(simdjson::ondemand::parser& parser,
@@ -544,7 +656,7 @@ std::set<std::string, std::less<>> filter_invalid_deckids(simdjson::ondemand::pa
     return {std::begin(transformed), std::end(transformed)};
 }
 
-constexpr std::size_t NUM_FILE_WRITERS = 16;
+constexpr std::size_t NUM_FILE_WRITERS = 4;
 
 int main() {
     std::locale::global(std::locale("en_US.UTF-8"));
@@ -573,39 +685,42 @@ int main() {
     std::cout << "Created all the card costs." << std::endl;
     std::vector<std::string> draft_filenames;
     for (const auto& path_data : std::filesystem::directory_iterator("data/drafts/")) {
-        draft_filenames.push_back(path_data.path());
+        draft_filenames.push_back(path_data.path().string());
     }
     moodycamel::BlockingConcurrentQueue<simdjson::padded_string> file_contents;
-    moodycamel::ProducerToken file_contents_producer(file_contents);
     std::jthread load_files([&](){
+        moodycamel::ProducerToken file_contents_producer(file_contents);
         for (const std::string& filename : draft_filenames) file_contents.enqueue(file_contents_producer, simdjson::padded_string::load(filename));
     });
     std::set<std::string, std::less<>> valid_deckids = filter_invalid_deckids(parser, draft_filenames.size(), file_contents);
+    load_files.join();
     std::mt19937_64 rng(random_seed_seq::get_instance());
     std::shuffle(draft_filenames.begin(), draft_filenames.end(), rng);
     moodycamel::ConcurrentQueue<std::string> files_to_process(draft_filenames.size());
-    moodycamel::ProducerToken files_to_process_producer(files_to_process);
     moodycamel::BlockingConcurrentQueue<Pick> processed_picks;
-    moodycamel::ConsumerToken processed_picks_consumer(processed_picks);
+    moodycamel::BlockingConcurrentQueue<Pick> shuffled_picks;
+    moodycamel::ProducerToken files_to_process_producer(files_to_process);
     files_to_process.enqueue_bulk(files_to_process_producer, std::make_move_iterator(draft_filenames.begin()),
                                   draft_filenames.size());
     std::vector<std::jthread> file_workers;
-    file_workers.reserve(std::jthread::hardware_concurrency());
-    for (size_t i=0; i < std::jthread::hardware_concurrency(); i++) {
+    file_workers.reserve(std::jthread::hardware_concurrency() - 3);
+    for (size_t i=0; i < std::jthread::hardware_concurrency() - 3; i++) {
         file_workers.emplace_back([&]() {
             process_files_worker(card_details, card_costs, valid_deckids, files_to_process, processed_picks,
                                  files_to_process_producer);
         });
     }
+    std::filesystem::create_directories("data/parsed_picks/full_uncompressed/");
+    std::jthread shuffle_worker_thread([&](std::stop_token stop_tkn) {
+        shuffle_worker(stop_tkn, processed_picks, shuffled_picks, card_details);
+    });
     std::atomic<std::size_t> file_count{0};
-    std::vector<std::jthread> save_workers;
-    save_workers.reserve(NUM_FILE_WRITERS);
-    for (std::size_t i=0; i < NUM_FILE_WRITERS; i++) {
-        save_workers.emplace_back([&](std::stop_token stop_tkn) {
-            save_picks(stop_tkn, processed_picks, file_count, "data/parsed_picks/full_uncompressed/{:0>4d}.bin");
-        });
-    }
+    std::jthread save_worker_thread([&](std::stop_token stop_tkn) {
+        save_picks(stop_tkn, shuffled_picks, file_count, "data/parsed_picks/full_uncompressed/{:0>4d}.bin", card_details);
+    });
     file_workers.clear();
-    for (auto& worker : save_workers) worker.request_stop();
+    shuffle_worker_thread.request_stop();
+    shuffle_worker_thread.join();
+    save_worker_thread.request_stop();
     return 0;
 }

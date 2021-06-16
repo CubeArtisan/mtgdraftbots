@@ -32,6 +32,7 @@ endmacro ()
 list (APPEND CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR})
 list (APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
 
+
 if (NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
   message (STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
   file (DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/develop/conan.cmake"
@@ -54,13 +55,22 @@ conan_cmake_configure (
   GENERATORS cmake_find_package_multi
 )
 
-foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
-  conan_cmake_autodetect(settings BUILD_TYPE ${TYPE})
+if (NOT CMAKE_CONFIGURATION_TYPES)
+  conan_cmake_autodetect(settings)
   conan_cmake_install(PATH_OR_REFERENCE .
                       BUILD missing
                       REMOTE conan-center
                       SETTINGS ${settings})
-endforeach ()
+else()
+  foreach (TYPE ${CMAKE_CONFIGURATION_TYPES})
+    message("Configuring for config type ${TYPE}")
+    conan_cmake_autodetect(settings BUILD_TYPE ${TYPE})
+    conan_cmake_install(PATH_OR_REFERENCE .
+                        BUILD missing
+                        REMOTE conan-center
+                        SETTINGS ${settings})
+  endforeach ()
+endif()
 
 add_library (MtgDraftBots INTERFACE
   "include/mtgdraftbots/mtgdraftbots.hpp"
@@ -105,7 +115,7 @@ add_executable (MtgDraftBotsTemp "src/temp.cpp")
 target_link_libraries (MtgDraftBotsTemp PUBLIC MtgDraftBots)
 add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wall)
 add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wextra)
-add_flag_if_avail (MtgDraftBotsTemp PRIVATE /W4)
+add_flag_if_avail (MtgDraftBotsTemp PRIVATE /W3)
 
 add_executable (ParsePicks "src/parse_picks.cpp")
 find_package (simdjson CONFIG REQUIRED)
@@ -113,7 +123,7 @@ find_package (concurrentqueue CONFIG REQUIRED)
 target_link_libraries (ParsePicks PUBLIC MtgDraftBots simdjson::simdjson concurrentqueue::concurrentqueue)
 add_flag_if_avail (ParsePicks PRIVATE -Wall)
 add_flag_if_avail (ParsePicks PRIVATE -Wextra)
-add_flag_if_avail (ParsePicks PRIVATE /W4)
+add_flag_if_avail (ParsePicks PRIVATE /W3)
 add_flag_if_avail (ParsePicks PRIVATE -march=native)
 add_flag_if_avail (ParsePicks PRIVATE -ffast-math)
 add_flag_if_avail (ParsePicks PRIVATE /march:AVX2)

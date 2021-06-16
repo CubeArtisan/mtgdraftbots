@@ -86,30 +86,33 @@ namespace mtgdraftbots::internal {
     }
 #endif
 
-    constexpr auto sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint32_t {
+    constexpr auto sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint8_t {
 #ifdef USE_VECTORCLASS
         if (!std::is_constant_evaluated()) {
-            return vcl_sum_masked(mask, lands);
+            return static_cast<std::uint8_t>(vcl_sum_masked(mask, lands));
         }
 #endif
         std::uint64_t result_64 = 0;
         for (std::uint8_t i = 0; i < 4; i++) {
-            std::uint64_t sub_mask  = internal::bit_cast<std::array<uint64_t, 4>>(mask)[i];
-            std::uint64_t sub_lands = internal::bit_cast<std::array<uint64_t, 4>>(lands)[i];
+            std::uint64_t sub_mask  = internal::bit_cast<std::array<std::uint64_t, 4>>(mask)[i];
+            std::uint64_t sub_lands = internal::bit_cast<std::array<std::uint64_t, 4>>(lands)[i];
             result_64 += sub_mask & sub_lands;
         }
-        auto result_64s = internal::bit_cast<std::array<uint32_t, 2>>(result_64);
-        auto result_32 = internal::bit_cast<std::array<uint16_t, 2>>(result_64s[0] + result_64s[1]);
-        auto result_16 = internal::bit_cast<std::array<uint8_t, 2>>(static_cast<uint16_t>(result_32[0] + result_32[1]));
-        return result_16[0] + result_16[1];
+        auto result_64s = internal::bit_cast<std::array<std::uint32_t, 2>>(result_64);
+        auto result_32 = internal::bit_cast<std::array<std::uint16_t, 2>>(result_64s[0] + result_64s[1]);
+        auto result_16 = internal::bit_cast<std::array<std::uint8_t, 2>>(static_cast<std::uint16_t>(result_32[0] + result_32[1]));
+        return static_cast<std::uint8_t>(result_16[0] + result_16[1]);
     }
 
     constexpr auto operator|(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
 #ifdef USE_VECTORCLASS
-        if (std::is_constant_evaluated()) {
+        if (!std::is_constant_evaluated()) {
             return vcl_operator_or(mask1, mask2);
         }
 #endif
+        // LandsMask result{ Mask::OFF };
+        // for (std::uint8_t i = 0; i < result.size(); i++) result[i] = static_cast<std::uint8_t>(mask1[i]) | static_cast<std::uint8_t>(mask2[i]);
+        // return result;
         std::array<std::uint64_t, 4> result;
         for (std::uint8_t i=0; i < 4; i++) {
             result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
@@ -125,7 +128,7 @@ namespace mtgdraftbots::internal {
         }
 #endif
         std::array<std::uint64_t, 4> result;
-        for (std::uint8_t i=0; i < 4; i++) {
+        for (std::uint8_t i = 0; i < 4; i++) {
             result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
                 & internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
         }
@@ -345,9 +348,13 @@ namespace mtgdraftbots::internal {
 
     struct CardCost : public RequirementVariant {
         constexpr auto calculate_probability(const Lands& lands) const -> float {
-            return visit([&lands](const auto& requirement) { return requirement.calculate_probability(lands); },
-                         *this);
+            return mpark::visit([&lands](const auto& requirement) { return requirement.calculate_probability(lands); },
+                                *this);
         }
+
+        constexpr CardCost() noexcept
+                : RequirementVariant(ManaRequirements<0>{})
+        { }
 
         constexpr CardCost(const CardDetails& card) noexcept
                 : RequirementVariant(get_requirement(card.cmc, card.cost_symbols))
