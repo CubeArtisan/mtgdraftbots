@@ -4,3 +4,6 @@
 [submodule "extern/frozen"]
 	path = extern/frozen
 	url = https://github.com/serge-sans-paille/frozen.git
+[submodule "extern/range"]
+	path = extern/range
+	url = https://github.com/think-cell/range.git

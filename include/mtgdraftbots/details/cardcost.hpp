@@ -13,22 +13,17 @@
 #include <vectorclass.h>
 #endif
 
-
-#include "mtgdraftbots/details/types.hpp"
+#include "mtgdraftbots/details/simd.hpp"
+#include "mtgdraftbots/types.hpp"
 #include "mtgdraftbots/details/constants.hpp"
 
-namespace mtgdraftbots::internal {
-    enum struct Mask : std::uint8_t {
-        ON = 0xFF, OFF = 0x00
-    };
-    using LandsMask = std::array<Mask, 32>;
-
+namespace mtgdraftbots::details {
     constexpr std::array<LandsMask, 32> MASK_BY_COMB_INDEX = ([]() {
         using namespace constants;
-        std::array<LandsMask, 32> result{{{Mask::OFF}}};
-        for (std::size_t i=0; i < 32; i++) {
-            for (std::size_t j=0; j < 32; j++) {
-                for (std::size_t k=0; k < 5; k++) {
+        std::array<LandsMask, 32> result{ {{Mask::OFF}} };
+        for (std::size_t i = 0; i < 32; i++) {
+            for (std::size_t j = 0; j < 32; j++) {
+                for (std::size_t k = 0; k < 5; k++) {
                     if (COLOR_COMBINATIONS[i][k] & COLOR_COMBINATIONS[j][k]) {
                         result[i][j] = Mask::ON;
                         break;
@@ -37,116 +32,7 @@ namespace mtgdraftbots::internal {
             }
         }
         return result;
-    })();
-
-    template<typename To, typename From>
-    constexpr auto bit_cast(const From& from) noexcept -> To {
-#ifdef __clang__
-        return __builtin_bit_cast(To, from);
-#else
-        return std::bit_cast<To>(from);
-#endif
-    }
-
-#ifdef USE_VECTORCLASS
-    inline auto vcl_sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint32_t {
-        vcl::Vec32uc maskVec;
-        maskVec.load(mask.data());
-        vcl::Vec32uc landsVec;
-        landsVec.load(lands.data());
-        return vcl::horizontal_add_x(maskVec & landsVec);
-    }
-
-    inline auto vcl_operator_or(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
-        LandsMask result;
-        vcl::Vec32uc mask1Vec;
-        mask1Vec.load(mask1.data());
-        vcl::Vec32uc mask2Vec;
-        mask2Vec.load(mask2.data());
-        (mask1Vec | mask2Vec).store(result.data());
-        return result;
-    }
-
-    inline auto vcl_operator_and(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
-        LandsMask result;
-        vcl::Vec32uc mask1Vec;
-        mask1Vec.load(mask1.data());
-        vcl::Vec32uc mask2Vec;
-        mask2Vec.load(mask2.data());
-        (mask1Vec & mask2Vec).store(result.data());
-        return result;
-    }
-
-    inline auto vcl_operator_not(const LandsMask& mask) -> LandsMask {
-        LandsMask result;
-        vcl::Vec32uc maskVec;
-        maskVec.load(mask.data());
-        (~maskVec).store(result.data());
-        return result;
-    }
-#endif
-
-    constexpr auto sum_masked(const LandsMask& mask, const Lands& lands) -> std::uint8_t {
-#ifdef USE_VECTORCLASS
-        if (!std::is_constant_evaluated()) {
-            return static_cast<std::uint8_t>(vcl_sum_masked(mask, lands));
-        }
-#endif
-        std::uint64_t result_64 = 0;
-        for (std::uint8_t i = 0; i < 4; i++) {
-            std::uint64_t sub_mask  = internal::bit_cast<std::array<std::uint64_t, 4>>(mask)[i];
-            std::uint64_t sub_lands = internal::bit_cast<std::array<std::uint64_t, 4>>(lands)[i];
-            result_64 += sub_mask & sub_lands;
-        }
-        auto result_64s = internal::bit_cast<std::array<std::uint32_t, 2>>(result_64);
-        auto result_32 = internal::bit_cast<std::array<std::uint16_t, 2>>(result_64s[0] + result_64s[1]);
-        auto result_16 = internal::bit_cast<std::array<std::uint8_t, 2>>(static_cast<std::uint16_t>(result_32[0] + result_32[1]));
-        return static_cast<std::uint8_t>(result_16[0] + result_16[1]);
-    }
-
-    constexpr auto operator|(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
-#ifdef USE_VECTORCLASS
-        if (!std::is_constant_evaluated()) {
-            return vcl_operator_or(mask1, mask2);
-        }
-#endif
-        // LandsMask result{ Mask::OFF };
-        // for (std::uint8_t i = 0; i < result.size(); i++) result[i] = static_cast<std::uint8_t>(mask1[i]) | static_cast<std::uint8_t>(mask2[i]);
-        // return result;
-        std::array<std::uint64_t, 4> result;
-        for (std::uint8_t i=0; i < 4; i++) {
-            result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
-                | internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
-        }
-        return internal::bit_cast<LandsMask>(result);
-    }
-
-    constexpr auto operator&(const LandsMask& mask1, const LandsMask& mask2) -> LandsMask {
-#ifdef USE_VECTORCLASS
-        if (!std::is_constant_evaluated()) {
-            return vcl_operator_and(mask1, mask2);
-        }
-#endif
-        std::array<std::uint64_t, 4> result;
-        for (std::uint8_t i = 0; i < 4; i++) {
-            result[i] = internal::bit_cast<std::array<std::uint64_t, 4>>(mask1)[i]
-                & internal::bit_cast<std::array<std::uint64_t, 4>>(mask2)[i];
-        }
-        return internal::bit_cast<LandsMask>(result);
-    }
-
-    constexpr auto operator~(const LandsMask& mask) -> LandsMask {
-#ifdef USE_VECTORCLASS
-        if (!std::is_constant_evaluated()) {
-            return vcl_operator_not(mask);
-        }
-#endif
-        std::array<std::uint64_t, 4> result;
-        for (std::uint8_t i=0; i < 4; i++) {
-            result[i] = ~internal::bit_cast<std::array<std::uint64_t, 4>>(mask)[i];
-        }
-        return internal::bit_cast<LandsMask>(result);
-    }
+        })();
 
     // This doesn't make the code faster to template, but makes some things cleaner.
     template<std::uint8_t>
@@ -358,6 +244,11 @@ namespace mtgdraftbots::internal {
 
         constexpr CardCost(const CardDetails& card) noexcept
                 : RequirementVariant(get_requirement(card.cmc, card.cost_symbols))
+        { }
+
+        template<typename Container>
+        constexpr CardCost(std::uint8_t cmc, const Container& symbols) noexcept
+                : RequirementVariant(get_requirement(cmc, symbols))
         { }
 
         using RequirementVariant::RequirementVariant;

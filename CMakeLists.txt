@@ -32,6 +32,8 @@ endmacro ()
 list (APPEND CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR})
 list (APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
 
+message(${CMAKE_BINARY_DIR})
+
 
 if (NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
   message (STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
@@ -46,12 +48,11 @@ include (${CMAKE_BINARY_DIR}/conan.cmake)
 conan_cmake_configure (
   REQUIRES
     frozen/1.0.1
-    eigen/3.3.9
     mpark-variant/1.4.0
     vectorclass/2.01.03
-    simdjson/0.9.5
-    concurrentqueue/1.0.2
-    fmt/7.1.3
+    # simdjson/0.9.5
+    # concurrentqueue/1.0.2
+    # fmt/7.1.3
   GENERATORS cmake_find_package_multi
 )
 
@@ -77,13 +78,13 @@ add_library (MtgDraftBots INTERFACE
   "include/mtgdraftbots/oracles.hpp"
   "include/mtgdraftbots/details/cardcost.hpp"
   "include/mtgdraftbots/details/constants.hpp"
-  "include/mtgdraftbots/details/types.hpp"
+  "include/mtgdraftbots/types.hpp"
   "include/mtgdraftbots/generated/prob_table.hpp"
-)
+ "include/mtgdraftbots/details/generate_probs.hpp" "include/mtgdraftbots/details/cardvalues.hpp" "include/mtgdraftbots/details/simd.hpp")
 
 option (USE_VECTORCLASS "Use Vectorclass to automatically run with SIMD instructions if available" ON)
 
-target_include_directories (MtgDraftBots INTERFACE "include")
+target_include_directories (MtgDraftBots INTERFACE "include" "extern/range")
 
 target_compile_features (MtgDraftBots INTERFACE cxx_std_20)
 
@@ -91,16 +92,16 @@ set_target_properties (MtgDraftBots PROPERTIES CXX_STANDARD 20
                                                CXX_STANDARD_REQUIRED ON
                                                CXX_EXTENSIONS OFF)
 
+message(${CMAKE_MODULE_PATH})
 find_package (frozen CONFIG REQUIRED)
-find_package (Eigen3 CONFIG REQUIRED)
 find_package (mpark_variant CONFIG REQUIRED)
-find_package (fmt CONFIG REQUIRED)
-target_link_libraries (MtgDraftBots INTERFACE mpark_variant::mpark_variant Eigen3::Eigen frozen::frozen fmt::fmt)
+# find_package (fmt CONFIG REQUIRED)
+target_link_libraries (MtgDraftBots INTERFACE mpark_variant::mpark_variant frozen::frozen)
 
 if (USE_VECTORCLASS)
   find_package (Vectorclass CONFIG REQUIRED)
   target_link_libraries (MtgDraftBots INTERFACE vectorclass::vectorclass)
-  target_compile_definitions (MtgDraftBots INTERFACE VCL_NAMESPACE=vcl USE_VECTORCLASS)
+  target_compile_options (MtgDraftBots INTERFACE VCL_NAMESPACE=vcl USE_VECTORCLASS)
 endif ()
 
 include (CMakePackageConfigHelpers)
@@ -109,22 +110,35 @@ write_basic_package_version_file (
   VERSION 0.0.1
   COMPATIBILITY AnyNewerVersion
 )
+if (EMSCRIPTEN)
+  set(CMAKE_EXECUTABLE_SUFFIX ".js")
+  add_executable(MtgDraftBotsEmscripten "src/emscripten.cpp")
+  target_link_libraries (MtgDraftBotsEmscripten PUBLIC MtgDraftBots)
+  target_compile_options(MtgDraftBotsEmscripten PUBLIC --bind -flto)
+  get_filename_component(PREJS ./emscripten/pre.js ABSOLUTE)
+  target_link_options (MtgDraftBotsEmscripten PUBLIC --bind -flto --pre-js "${PREJS}" "SHELL: -s EVAL_CTORS=1"
+                                                     "SHELL: -s INITIAL_MEMORY=39976960" "SHELL: -s STRICT=1"
+                                                     "SHELL: -s ALLOW_MEMORY_GROWTH=1" "SHELL: -s MALLOC=dlmalloc"
+                                                     "SHELL: -s MODULARIZE=1" "SHELL: -s EXPORT_ES6=1"
+                                                     "SHELL: -s EXPORT_NAME=createMtgDraftBots"
+                                                      $<$<CONFIG:Release>:--closure=1>)
 
+endif()
 # This is used for getting compile_commands.json
-add_executable (MtgDraftBotsTemp "src/temp.cpp")
-target_link_libraries (MtgDraftBotsTemp PUBLIC MtgDraftBots)
-add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wall)
-add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wextra)
-add_flag_if_avail (MtgDraftBotsTemp PRIVATE /W3)
+# add_executable (MtgDraftBotsTemp "src/temp.cpp")
+# target_link_libraries (MtgDraftBotsTemp PUBLIC MtgDraftBots)
+# add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wall)
+# add_flag_if_avail (MtgDraftBotsTemp PRIVATE -Wextra)
+# add_flag_if_avail (MtgDraftBotsTemp PRIVATE /W3)
 
-add_executable (ParsePicks "src/parse_picks.cpp")
-find_package (simdjson CONFIG REQUIRED)
-find_package (concurrentqueue CONFIG REQUIRED)
-target_link_libraries (ParsePicks PUBLIC MtgDraftBots simdjson::simdjson concurrentqueue::concurrentqueue)
-add_flag_if_avail (ParsePicks PRIVATE -Wall)
-add_flag_if_avail (ParsePicks PRIVATE -Wextra)
-add_flag_if_avail (ParsePicks PRIVATE /W3)
-add_flag_if_avail (ParsePicks PRIVATE -march=native)
-add_flag_if_avail (ParsePicks PRIVATE -ffast-math)
-add_flag_if_avail (ParsePicks PRIVATE /march:AVX2)
-add_flag_if_avail (ParsePicks PRIVATE -fdiagnostics-color)
+# add_executable (ParsePicks "src/parse_picks.cpp" "include/mtgdraftbots/details/simd.hpp")
+# find_package (simdjson CONFIG REQUIRED)
+# find_package (concurrentqueue CONFIG REQUIRED)
+# target_link_libraries (ParsePicks PUBLIC MtgDraftBots simdjson::simdjson concurrentqueue::concurrentqueue)
+# add_flag_if_avail (ParsePicks PRIVATE -Wall)
+# add_flag_if_avail (ParsePicks PRIVATE -Wextra)
+# add_flag_if_avail (ParsePicks PRIVATE /W3)
+# add_flag_if_avail (ParsePicks PRIVATE -march=native)
+# add_flag_if_avail (ParsePicks PRIVATE -ffast-math)
+# add_flag_if_avail (ParsePicks PRIVATE /march:AVX2)
+# add_flag_if_avail (ParsePicks PRIVATE -fdiagnostics-color)

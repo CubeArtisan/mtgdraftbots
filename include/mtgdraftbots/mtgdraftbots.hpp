@@ -1,11 +1,12 @@
 #ifndef MTGDRAFTBOTS_H
 #define MTGDRAFTBOTS_H
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstring>
 #include <cstdint>
-#include <frozen/string.h>
+#include <functional>
 #include <map>
 #include <optional>
 #include <random>
@@ -15,156 +16,157 @@
 #include <variant>
 #include <vector>
 
-#include <Eigen/Dense>
+#include <frozen/string.h>
 
 #include "mtgdraftbots/oracles.hpp"
+#include "mtgdraftbots/types.hpp"
 #include "mtgdraftbots/details/cardcost.hpp"
-#include "mtgdraftbots/details/types.hpp"
+#include "mtgdraftbots/details/cardvalues.hpp"
 #include "mtgdraftbots/details/constants.hpp"
+#include "mtgdraftbots/details/generate_probs.hpp"
 
 namespace mtgdraftbots {
-
-    namespace internal {
-
-        struct CardValues {
-            // Can this be constexpr?
-            inline explicit CardValues(const Eigen::ArrayXi indices_)
-                : indices(indices_),
-                  embeddings(indices.rows(), 64),
-                  ratings(indices.rows())
-            {
-                costs.reserve(static_cast<std::size_t>(indices.rows()));
-                /* for (std::size_t i=0; i < indices.rows(); i++) { */
-                /*     embeddings.row(i) = Eigen::Matrix<float, 1, mtgdraftbots::constants::EMBEDDING_SIZE>( */
-                /*         mtgdraftbots::constants::CARD_EMBEDDINGS[indices[i]].data() */
-                /*     ); */
-                /*     ratings[i] = constants::CARD_RATINGS[indices[i]]; */
-                /*     costs.push_back({mtgdraftbots::constants::CARD_CMCS[indices[i]], */
-                /*                      mtgdraftbots::constants::CARD_COST_SYMBOLS[indices[i]]}); */
-                /* } */
-            }
-            CardValues(const CardValues&) = default;
-            CardValues& operator=(const CardValues&) = default;
-            CardValeus(CardValues&&) = default;
-            CardValues& operator=(CardValues&&) = default;
-            Eigen::ArrayXi indices;
-            Eigen::Matrix<float, Eigen::Dynamic, EMBEDDING_SIZE> embeddings;
-            Eigen::Matrix<float, Eigen::Dynamic, 1> ratings;
-            std::vector<CardCost> costs;
-        };
-
-        template <typename Rng>
-        struct BotState {
-            CardValues picked;
-            CardValues seen;
-            CardValues cards_in_pack;
-            CardValues basics;
-            std::pair<Coord, Coord> coords;
-            std::pair<float, float> coord_weights;
-            mutable Rng rng;
-        };
-    }
-
     struct BotScore {
-        DrafterState drafter_state;
         float score;
-        float total_nonland_prob;
-        std::array<OracleResult, oracles::ORACLES.size()> oracle_results;
-        Option option;
-        std::string colors;
+        std::array<OracleResult, details::ORACLES.size()> oracle_results;
         Lands lands;
-        std::vector<float> probabilities;
     };
 
-    namespace internal {
-        struct Transition {
-            std::uint8_t increase_color;
-            std::uint8_t decrease_color;
-        };
+    struct BotResult : public DrafterState {
+        std::vector<Option> options;
+        std::vector<BotScore> scores;
+        unsigned int chosen_option;
+    };
 
-        // TODO: Can this be constexpr?
-        template<typename Rng>
-        inline auto find_transitions(const Lands& lands, const Lands& availableLands, Rng& rng) -> std::vector<Transition> {
-            // TODO: Implement.
-            return {};
-        };
-
-        constexpr auto get_available_lands(const CardValues& pool, const CardValues& option,
-                                           const CardValues& basics) -> Lands {
-            // TODO: Implement.
-            return {};
+    namespace details {
+        constexpr void BotState::calculate_embeddings() & noexcept {
+            for (std::size_t i = 0; i < NUM_LAND_COMBS; i++) {
+                for (std::size_t idx : picked) {
+                    pool_embeddings[i] += land_combs.first[idx][i] * cards.get().embeddings[idx];
+                }
+                l2_normalize(pool_embeddings[i]);
+            }
         }
+    };
 
-        template<typename Rng>
-        constexpr auto choose_random_lands(const Lands& availableLands, Rng& rng) -> Lands {
-            // TODO: Implement.
-            return {};
-        }
-
-        // TODO: If find_transitions can be made constexpr so should this.
-        template <typename Rng>
-        inline auto calculate_score(const BotState<Rng>& bot_state, BotScore& bot_score) -> BotScore& {
-            // TODO: Implement.
-            return bot_score;
-        }
-
-        inline Eigen::ArrayXi get_card_indices(const std::vector<std::string>& names) {
-            return {};
-        /*     std::vector<int> picked_indices; */
-        /*     picked_indices.reserve(names.size()); */
-        /*     for (size_t i=0; i < names.size(); i++) { */
-        /*         const auto iter = mtgdraftbots::constants::CARD_INDICES.find(frozen::string(names[i])); */
-        /*         if (iter != mtgdraftbots::constants::CARD_INDICES.end()) { */
-        /*             picked_indices.push_back(iter->second); */
-        /*         } */
-        /*     } */
-        /*     Eigen::ArrayXi result(picked_indices.size()); */
-        /*     for (size_t i=0; i < picked_indices.size(); i++) { */
-        /*         result[i] = picked_indices[i]; */
-        /*     } */
-        /*     return result; */
-        }
-    }
-
-    // TODO: Make this constexpr
-    inline auto DrafterState::calculate_pick_from_options(const std::vector<Option>& options) const -> BotScore {
-        using namespace internal;
-        const float packFloat = WEIGHT_Y_DIM * static_cast<float>(pack_num) / num_packs;
-        const float pickFloat = WEIGHT_X_DIM * static_cast<float>(pick_num) / num_picks;
+    inline auto calculate_pick_from_options(const DrafterState& drafter_state, const std::vector<Option>& options) -> BotResult {
+        using namespace mtgdraftbots::details;
+        const float packFloat = details::WEIGHT_Y_DIM * static_cast<float>(drafter_state.pack_num) / drafter_state.num_packs;
+        const float pickFloat = details::WEIGHT_X_DIM * static_cast<float>(drafter_state.pick_num) / drafter_state.num_picks;
         const std::size_t packLower = static_cast<std::size_t>(packFloat);
         const std::size_t pickLower = static_cast<std::size_t>(pickFloat);
-        const std::size_t packUpper = std::min(packLower + 1, WEIGHT_Y_DIM - 1);
-        const std::size_t pickUpper = std::min(pickLower + 1, WEIGHT_X_DIM - 1);
-        BotState<std::mt19937_64> bot_state{
-            CardValues{internal::get_card_indices(picked)},
-            CardValues{internal::get_card_indices(seen)},
-            CardValues{internal::get_card_indices(cards_in_pack)},
-            CardValues{internal::get_card_indices(basics)},
-            {{pickLower, packLower}, {pickUpper, packUpper}},
-            {packFloat - packLower, pickFloat - pickLower},
-            std::mt19937_64{seed}
+        const std::size_t packUpper = std::min(packLower + 1, details::WEIGHT_Y_DIM - 1);
+        const std::size_t pickUpper = std::min(pickLower + 1, details::WEIGHT_X_DIM - 1);
+        BotResult result{ drafter_state, options };
+        details::CardValues cards(drafter_state.card_oracle_ids);
+        details::BotState bot_state{
+            drafter_state,
+            options,
+            details::generate_probs(drafter_state, cards),
+            { {packFloat - packLower, {pickLower, packLower}}, {pickFloat - pickLower, { pickUpper, packUpper } }},
+            std::cref(cards),
         };
-        BotScore result;
-        for (const auto& option_indices : options) {
-            Eigen::ArrayXi option_card_indices(option_indices.size());
-            for (size_t i = 0; i < option_indices.size(); i++) {
-                option_card_indices[i] = bot_state.cards_in_pack.indices[option_indices[i]];
-            }
-            CardValues option(option_card_indices);
-            const Lands available_lands = get_available_lands(bot_state.picked, option, bot_state.basics);
-            const Lands initial_lands = choose_random_lands(available_lands, bot_state.rng);
-            BotScore next_score;
-            calculate_score(bot_state, next_score);
-            BotScore prev_score;
-            prev_score.score = next_score.score - 1;
-            while (next_score.score > prev_score.score) {
-                prev_score = next_score;
-                for (const auto& [increase, decrease] : find_transitions(prev_score.lands, available_lands, bot_state.rng)) {
-                    // TODO: Implement
+        bot_state.calculate_embeddings();
+        std::vector<details::OracleMultiResult> oracle_results;
+        oracle_results.reserve(details::ORACLES.size());
+        result.scores.reserve(options.size());
+        std::transform(std::begin(details::ORACLES), std::end(details::ORACLES), std::back_inserter(oracle_results),
+                       [&](const auto& oracle) { return oracle->calculate_result(bot_state); });
+        for (std::size_t i = 0; i < options.size(); i++) {
+            std::array<float, details::NUM_LAND_COMBS> scores = { 0.f };
+            for (const auto& oracle_result : oracle_results) scores += oracle_result.weight * oracle_result.value[i];
+            std::size_t best_index = 0;
+            float best_score = scores[0];
+            for (std::size_t j = 1; j < NUM_LAND_COMBS; j++) {
+                if (scores[j] > best_score) {
+                    best_index = j;
+                    best_score = scores[j];
                 }
             }
+            float total_weight = 0.f;
+            for (const auto& oracle_result : oracle_results) total_weight += oracle_result.weight;
+            std::array<OracleResult, details::ORACLES.size()> best_oracle_results;
+            for (std::size_t j = 0; j < best_oracle_results.size(); j++) {
+                std::vector<float> per_card;
+                per_card.reserve(oracle_results[j].per_card.size());
+                for (const auto& scores : oracle_results[j].per_card[i]) per_card.push_back(scores[best_index]);
+                best_oracle_results[j] = OracleResult{
+                    oracle_results[j].title,
+                    oracle_results[j].tooltip,
+                    oracle_results[j].weight / total_weight,
+                    oracle_results[j].value[i][best_index],
+                    std::move(per_card),
+                };
+            }
+            result.scores.push_back({ best_score, best_oracle_results, bot_state.land_combs.second[best_index] });
         }
+        std::size_t best_option = 0;
+        std::size_t best_result = -1;
+        for (std::size_t i = 0; i < result.scores.size(); i++) {
+            if (result.scores[i].score > best_result) {
+                best_option = i;
+                best_result = result.scores[i].score;
+            }
+        }
+        result.chosen_option = best_option;
         return result;
+    }
+
+    inline void initialize_draftbots(const std::vector<char>& buffer) {
+        const char* cur_pos = buffer.data();
+        const char* const end_pos = cur_pos + buffer.size();
+        for (std::size_t i = 0; i < details::embedding_bias.size(); i++) {
+            details::embedding_bias[i] = *reinterpret_cast<const float*>(cur_pos);
+            cur_pos += sizeof(float);
+        }
+        std::size_t num_oracles = *reinterpret_cast<const std::size_t*>(cur_pos);
+        cur_pos += sizeof(std::size_t);
+        for (std::size_t i = 0; i < num_oracles; i++) {
+            details::Weights weights;
+            for (std::size_t x = 0; x < details::WEIGHT_X_DIM; x++) {
+                for (std::size_t y = 0; y < details::WEIGHT_Y_DIM; y++) {
+                    weights[x][y] = *reinterpret_cast<const float*>(cur_pos);
+                    cur_pos += sizeof(float);
+                }
+            }
+            std::size_t length = std::strlen(cur_pos);
+            std::string title(cur_pos, cur_pos + length);
+            cur_pos += length + 1;
+            details::weights_map.insert({ title, weights });
+        }
+        std::size_t num_cards = *reinterpret_cast<const std::size_t*>(cur_pos);
+        cur_pos += sizeof(std::size_t);
+        for (std::size_t i = 0; i < num_cards; i++) {
+            float rating = *reinterpret_cast<const float*>(cur_pos);
+            cur_pos += sizeof(float);
+            details::Embedding embedding;
+            for (std::size_t j = 0; j < embedding.size(); j++) {
+                embedding[j] = *reinterpret_cast<const float*>(cur_pos);
+                cur_pos += sizeof(float);
+            }
+			std::uint8_t produces_index = *reinterpret_cast<const std::uint8_t>(cur_pos);
+			cur_pos += sizeof(std::uint8_t);
+            std::optional<details::Colors> produces = std::nullopt;
+			if (produces_index < 32) {
+				produces = details::COLOR_COMBINATIONS[produces_index];
+			}
+            std::uint8_t cmc = *reinterpret_cast<const std::uint8_t*>(cur_pos);
+            cur_pos += sizeof(std::uint8_t);
+            std::uint8_t num_symbols = *reinterpret_cast<const std::uint8_t*>(cur_pos);
+            cur_pos += sizeof(std::uint8_t);
+            std::vector<std::string> symbols;
+            symbols.reserve(num_symbols);
+            for (std::size_t j = 0; j < num_symbols; j++) {
+                std::size_t length = std::strlen(cur_pos);
+                symbols.emplace_back(cur_pos, cur_pos + length);
+                cur_pos += length + 1;
+            }
+            details::CardCost cost(cmc, symbols);
+            std::size_t length = std::strlen(cur_pos);
+            std::string oracle_id(cur_pos, cur_pos + length);
+            cur_pos += length + 1;
+            details::card_lookups.insert({ oracle_id, details::CardValue{ rating, embedding, cost, produces } });
+        }
     }
 }
 #endif

@@ -38,7 +38,8 @@
 
 #include "mtgdraftbots/details/cardcost.hpp"
 #include "mtgdraftbots/details/constants.hpp"
-#include "mtgdraftbots/details/types.hpp"
+#include "mtgdraftbots/types.hpp"
+#include "mtgdraftbots/oracles.hpp"
 
 using namespace std::string_view_literals;
 
@@ -204,23 +205,23 @@ struct Pick {
 
     template <typename Rng>
     void generate_probs(const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details,
-                        const std::vector<std::optional<mtgdraftbots::internal::CardCost>>& card_costs,
+                        const std::vector<std::optional<mtgdraftbots::details::CardCost>>& card_costs,
                         Rng& rng) noexcept {
         using ScoreValue = std::tuple<float, std::array<float, MAX_IN_PACK>,
                                       std::array<float, MAX_PICKED>, std::array<float, MAX_SEEN>,
                                       mtgdraftbots::Lands>;
         std::array<std::array<std::uint8_t, 5>, NUM_LAND_COMBS> found_values{ {{ 0 }} };
-        constexpr std::array<mtgdraftbots::internal::LandsMask, 5> masks{
-            mtgdraftbots::internal::MASK_BY_COMB_INDEX[1],
-            mtgdraftbots::internal::MASK_BY_COMB_INDEX[2],
-            mtgdraftbots::internal::MASK_BY_COMB_INDEX[3],
-            mtgdraftbots::internal::MASK_BY_COMB_INDEX[4],
-            mtgdraftbots::internal::MASK_BY_COMB_INDEX[5],
+        constexpr std::array<mtgdraftbots::details::LandsMask, 5> masks{
+            mtgdraftbots::details::MASK_BY_COMB_INDEX[1],
+            mtgdraftbots::details::MASK_BY_COMB_INDEX[2],
+            mtgdraftbots::details::MASK_BY_COMB_INDEX[3],
+            mtgdraftbots::details::MASK_BY_COMB_INDEX[4],
+            mtgdraftbots::details::MASK_BY_COMB_INDEX[5],
         };
         const mtgdraftbots::Lands available_lands = get_available_lands(card_details);
-        std::array<mtgdraftbots::internal::CardCost, MAX_IN_PACK> in_pack_costs{};
-        std::array<mtgdraftbots::internal::CardCost, MAX_PICKED> picked_costs{};
-        std::array<mtgdraftbots::internal::CardCost, MAX_SEEN> seen_costs{};
+        std::array<mtgdraftbots::details::CardCost, MAX_IN_PACK> in_pack_costs{};
+        std::array<mtgdraftbots::details::CardCost, MAX_PICKED> picked_costs{};
+        std::array<mtgdraftbots::details::CardCost, MAX_SEEN> seen_costs{};
         for (std::uint16_t i=0; i < num_in_pack; i++) {
 #ifndef NDEBUG
             if (!card_costs[in_pack[i]]) std::cerr << "Cost is null for card in pack." << std::endl;
@@ -257,7 +258,7 @@ struct Pick {
                         ScoreValue new_score = prev_score;
                         mtgdraftbots::Lands& new_lands = std::get<mtgdraftbots::Lands>(new_score);
                         std::transform(std::begin(masks), std::end(masks), std::begin(found_values[i]),
-                            [&](const mtgdraftbots::internal::LandsMask& mask) { return mtgdraftbots::internal::sum_masked(mask, new_lands); });
+                            [&](const mtgdraftbots::details::LandsMask& mask) { return mtgdraftbots::details::sum_masked(mask, new_lands); });
                         bool too_close = false;
                         for (std::size_t j = 0; j < i; j++) {
                             std::int8_t difference = 0;
@@ -272,7 +273,7 @@ struct Pick {
                         if (too_close) continue;
                         new_lands[increase]++;
                         new_lands[decrease]--;
-                        const auto transformation = [&new_lands](const mtgdraftbots::internal::CardCost& cost){ return cost.calculate_probability(new_lands); };
+                        const auto transformation = [&new_lands](const mtgdraftbots::details::CardCost& cost){ return cost.calculate_probability(new_lands); };
                         std::transform(in_pack_begin, in_pack_end, std::begin(std::get<1>(new_score)), transformation);
                         std::transform(picked_begin, picked_end, std::begin(std::get<2>(new_score)), transformation);
                         std::transform(seen_begin, seen_end, std::begin(std::get<3>(new_score)), transformation);
@@ -418,13 +419,13 @@ constexpr void calculate_coord_info(std::array<std::array<std::uint8_t, 2>, 4>& 
                                     std::array<float, 4>& coord_weights,
                                     std::uint8_t pack_num, std::uint8_t num_packs,
                                     std::uint8_t pick_num, std::uint8_t num_picks) noexcept {
-    const float pack_float = (static_cast<float>(mtgdraftbots::WEIGHT_X_DIM) * pack_num) / num_packs;
+    const float pack_float = (static_cast<float>(mtgdraftbots::details::WEIGHT_X_DIM) * pack_num) / num_packs;
     const std::uint8_t pack_0 = static_cast<std::uint8_t>(pack_float);
-    const std::uint8_t pack_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::WEIGHT_X_DIM - 1), static_cast<std::uint8_t>(pack_0 + 1));
+    const std::uint8_t pack_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::details::WEIGHT_X_DIM - 1), static_cast<std::uint8_t>(pack_0 + 1));
     const float pack_frac = pack_float - pack_0;
-    const float pick_float = (static_cast<float>(mtgdraftbots::WEIGHT_Y_DIM) * pick_num) / num_picks;
+    const float pick_float = (static_cast<float>(mtgdraftbots::details::WEIGHT_Y_DIM) * pick_num) / num_picks;
     const std::uint8_t pick_0 = static_cast<std::uint8_t>(pick_float);
-    const std::uint8_t pick_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::WEIGHT_Y_DIM - 1), static_cast<std::uint8_t>(pick_0 + 1));
+    const std::uint8_t pick_1 = std::min(static_cast<std::uint8_t>(mtgdraftbots::details::WEIGHT_Y_DIM - 1), static_cast<std::uint8_t>(pick_0 + 1));
     const float pick_frac = pick_float - pick_0;
     coords = {{{pack_0, pick_0}, {pack_0, pick_1}, {pack_1, pick_0}, {pack_1, pick_1}}};
     coord_weights = {(1 - pack_frac) * (1 - pick_frac), (1 - pack_frac) * pick_frac,
@@ -504,7 +505,7 @@ char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
 
 
 void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details,
-                          const std::vector<std::optional<mtgdraftbots::internal::CardCost>>& card_costs,
+                          const std::vector<std::optional<mtgdraftbots::details::CardCost>>& card_costs,
                           const std::set<std::string, std::less<>>& valid_deckids,
                           moodycamel::ConcurrentQueue<std::string>& files_to_process,
                           moodycamel::BlockingConcurrentQueue<Pick>& processed_picks,
@@ -673,11 +674,11 @@ int main() {
                 });
             return {std::begin(transformed), std::end(transformed)};
         })();
-    const std::vector<std::optional<mtgdraftbots::internal::CardCost>> card_costs =
-        ([&]() -> std::vector<std::optional<mtgdraftbots::internal::CardCost>> {
+    const std::vector<std::optional<mtgdraftbots::details::CardCost>> card_costs =
+        ([&]() -> std::vector<std::optional<mtgdraftbots::details::CardCost>> {
             auto transformed = card_details
-                | std::views::transform([](const auto& cd) -> std::optional<mtgdraftbots::internal::CardCost> {
-                    if (cd) return mtgdraftbots::internal::CardCost{*cd};
+                | std::views::transform([](const auto& cd) -> std::optional<mtgdraftbots::details::CardCost> {
+                    if (cd) return mtgdraftbots::details::CardCost{*cd};
                     else return std::nullopt;
                 });
             return {std::begin(transformed), std::end(transformed)};
