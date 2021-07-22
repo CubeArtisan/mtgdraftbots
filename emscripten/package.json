@@ -1,6 +1,6 @@
 {
 	"name": "mtgdraftbots",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"license": "AGPL-3.0-only",
 	"type": "module",
 	"sideEffects": false,
@@ -10,6 +10,7 @@
 		"url": "https://github.com/CubeArtisan/mtgdraftbots"
 	},
 	"files": [
+		"mtgdraftbots/*.ts",
 		"mtgdraftbots/*.js",
 		"mtgdraftbots/*.wasm",
 		"README.md",
@@ -18,6 +19,7 @@
 	],
 	"main": "./mtgdraftbots/mtgdraftbots.js",
 	"browser": "./mtgdraftbots/mtgdraftbots.js",
+	"types": "./mtgdraftbots/mtgdraftbots.d.ts",
 	"dependencies": {
 		"threads": "^1.6.5"
 	}
