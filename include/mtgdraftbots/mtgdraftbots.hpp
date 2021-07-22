@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <random>
@@ -88,7 +89,7 @@ namespace mtgdraftbots {
             std::array<OracleResult, details::ORACLES.size()> best_oracle_results;
             for (std::size_t j = 0; j < best_oracle_results.size(); j++) {
                 std::vector<float> per_card;
-                per_card.reserve(oracle_results[j].per_card.size());
+                per_card.reserve(oracle_results[j].per_card[i].size());
                 for (const auto& scores : oracle_results[j].per_card[i]) per_card.push_back(scores[best_index]);
                 best_oracle_results[j] = OracleResult{
                     oracle_results[j].title,
@@ -98,7 +99,7 @@ namespace mtgdraftbots {
                     std::move(per_card),
                 };
             }
-            result.scores.push_back({ best_score, best_oracle_results, bot_state.land_combs.second[best_index] });
+            result.scores.push_back({ best_score / total_weight, best_oracle_results, bot_state.land_combs.second[best_index] });
         }
         std::size_t best_option = 0;
         std::size_t best_result = -1;
@@ -114,13 +115,12 @@ namespace mtgdraftbots {
 
     inline void initialize_draftbots(const std::vector<char>& buffer) {
         const char* cur_pos = buffer.data();
-        const char* const end_pos = cur_pos + buffer.size();
         for (std::size_t i = 0; i < details::embedding_bias.size(); i++) {
             details::embedding_bias[i] = *reinterpret_cast<const float*>(cur_pos);
             cur_pos += sizeof(float);
         }
-        std::size_t num_oracles = *reinterpret_cast<const std::size_t*>(cur_pos);
-        cur_pos += sizeof(std::size_t);
+        std::uint8_t num_oracles = *reinterpret_cast<const std::uint8_t*>(cur_pos);
+        cur_pos += sizeof(std::uint8_t);
         for (std::size_t i = 0; i < num_oracles; i++) {
             details::Weights weights;
             for (std::size_t x = 0; x < details::WEIGHT_X_DIM; x++) {
@@ -134,8 +134,9 @@ namespace mtgdraftbots {
             cur_pos += length + 1;
             details::weights_map.insert({ title, weights });
         }
-        std::size_t num_cards = *reinterpret_cast<const std::size_t*>(cur_pos);
-        cur_pos += sizeof(std::size_t);
+        std::uint32_t num_cards = *reinterpret_cast<const std::uint32_t*>(cur_pos);
+        // WASM is 32 bit by default, but this is saved as 64.
+        cur_pos += sizeof(std::uint32_t);
         for (std::size_t i = 0; i < num_cards; i++) {
             float rating = *reinterpret_cast<const float*>(cur_pos);
             cur_pos += sizeof(float);
@@ -144,12 +145,8 @@ namespace mtgdraftbots {
                 embedding[j] = *reinterpret_cast<const float*>(cur_pos);
                 cur_pos += sizeof(float);
             }
-			std::uint8_t produces_index = *reinterpret_cast<const std::uint8_t>(cur_pos);
+			std::uint8_t produces = *reinterpret_cast<const std::uint8_t*>(cur_pos);
 			cur_pos += sizeof(std::uint8_t);
-            std::optional<details::Colors> produces = std::nullopt;
-			if (produces_index < 32) {
-				produces = details::COLOR_COMBINATIONS[produces_index];
-			}
             std::uint8_t cmc = *reinterpret_cast<const std::uint8_t*>(cur_pos);
             cur_pos += sizeof(std::uint8_t);
             std::uint8_t num_symbols = *reinterpret_cast<const std::uint8_t*>(cur_pos);
@@ -157,14 +154,13 @@ namespace mtgdraftbots {
             std::vector<std::string> symbols;
             symbols.reserve(num_symbols);
             for (std::size_t j = 0; j < num_symbols; j++) {
-                std::size_t length = std::strlen(cur_pos);
-                symbols.emplace_back(cur_pos, cur_pos + length);
-                cur_pos += length + 1;
+                symbols.emplace_back(cur_pos, cur_pos + 3);
+                cur_pos += 3;
             }
             details::CardCost cost(cmc, symbols);
-            std::size_t length = std::strlen(cur_pos);
-            std::string oracle_id(cur_pos, cur_pos + length);
-            cur_pos += length + 1;
+            // They're UUID's so 36 is always the length
+            std::string oracle_id(cur_pos, cur_pos + 36);
+            cur_pos += 36;
             details::card_lookups.insert({ oracle_id, details::CardValue{ rating, embedding, cost, produces } });
         }
     }

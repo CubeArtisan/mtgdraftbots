@@ -61,8 +61,10 @@ namespace mtgdraftbots {
                 per_option.reserve(per_card.size());
                 for (const auto& option_scores : per_card) {
                     std::array<float, NUM_LAND_COMBS> score{ 0.f };
-                    for (const auto& option_score : option_scores) score += option_score;
-                    score /= static_cast<float>(max_count);
+                    for (const auto& option_score : option_scores) {
+						score += option_score;
+                    }
+					score /= static_cast<float>(max_count);
                     per_option.push_back(score);
                 }
                 return {
@@ -103,6 +105,7 @@ namespace mtgdraftbots {
                             }
                             score_for_option.push_back(score_for_card);
                         }
+						result.push_back(score_for_option);
                     }
                     return result;
                 }
@@ -133,6 +136,7 @@ namespace mtgdraftbots {
                                 score_for_option.push_back(score_for_card);
                             }
                         }
+						result.push_back(score_for_option);
                     }
                     return result;
                 }
@@ -217,10 +221,10 @@ namespace mtgdraftbots {
 
         const std::array<std::unique_ptr<const Oracle>, 6> ORACLES{
             std::make_unique<oracles::RatingOracle>(),
-            std::make_unique<oracles::PickSynergyOracle>(),
             std::make_unique<oracles::ColorsOracle>(),
-            std::make_unique<oracles::InternalSynergyOracle>(),
             std::make_unique<oracles::OpennessOracle>(),
+            std::make_unique<oracles::PickSynergyOracle>(),
+            std::make_unique<oracles::InternalSynergyOracle>(),
             std::make_unique<oracles::ExternalSynergyOracle>(),
         };
     }
