@@ -33,6 +33,8 @@ interface BotResult extends DrafterState {
 	scores: BotScore[];
 }
 
-export function calculateBotPick(drafterState: DrafterState) : BotResult;
+declare function calculateBotPick(drafterState: DrafterState) : BotResult;
 
-export function calculateBotPickFromOptions(drafterState: DrafterState, options: number[][]) : BotResult;
+declare function calculateBotPickFromOptions(drafterState: DrafterState, options: number[][]) : BotResult;
+
+declare const COLOR_COMBINATIONS: string[32];
