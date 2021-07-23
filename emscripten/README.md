@@ -5,7 +5,7 @@ recent javascript versions are supported. It runs them in a separate thread
 to reduce resource competition. The bots have an extremely simple API consisting
 of two functions.
 
-```
+```javascript
 import { calculateBotPickFromOptions } from 'mtgdraftbots';
 
 const drafterState = {
@@ -47,7 +47,7 @@ const result = calculateBotPickFromOptions(drafterState, options);
 
 and 
 
-```
+```javascript
 import { calculateBotPick } from 'mtgdraftbots';
 
 const result = calculateBotPick(drafterState); // Creates an option for each card in the pack on its own.
@@ -57,7 +57,7 @@ If you don't track seen you can pass an empty array and the bots will still work
 
 The return values from these functions look like
 
-```
+```javascript
 result = {
   ...drafterState,
   options: options, // These make it so if you're handling these differently you can track the parameters that were given.
@@ -92,3 +92,14 @@ breaking the API.
 The first call can be slow/error since it is retrieving the parameters from a remote server. It should
 be fine to retry the connection. This allows them to be updated as cards come out and new data is
 acquired without you having to update your dependencies.
+
+If using with Webpack make sure you enable web assembly with
+
+```javascript
+module.exports = {
+  experiments: {
+    asyncWebAssembly: true
+  },
+  ...
+}
+```
