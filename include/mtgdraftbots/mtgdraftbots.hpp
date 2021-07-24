@@ -35,6 +35,7 @@ namespace mtgdraftbots {
 
     struct BotResult : public DrafterState {
         std::vector<Option> options;
+        std::vector<int> recognized;
         std::vector<BotScore> scores;
         unsigned int chosen_option;
     };
@@ -50,6 +51,15 @@ namespace mtgdraftbots {
         }
     };
 
+    std::vector<int> test_recognized(std::vector<std::string> oracle_ids) {
+        std::vector<int> result;
+        result.reserve(oracle_ids.size());
+        for (const std::string& oracle_id : oracle_ids) {
+            result.push_back((details::card_lookups.find(oracle_id) != details::card_lookups.end()) ? 1 : 0);
+        }
+        return result;
+    }
+
     inline auto calculate_pick_from_options(const DrafterState& drafter_state, const std::vector<Option>& options) -> BotResult {
         using namespace mtgdraftbots::details;
         const float packFloat = details::WEIGHT_Y_DIM * static_cast<float>(drafter_state.pack_num) / drafter_state.num_packs;
@@ -58,7 +68,7 @@ namespace mtgdraftbots {
         const std::size_t pickLower = static_cast<std::size_t>(pickFloat);
         const std::size_t packUpper = std::min(packLower + 1, details::WEIGHT_Y_DIM - 1);
         const std::size_t pickUpper = std::min(pickLower + 1, details::WEIGHT_X_DIM - 1);
-        BotResult result{ drafter_state, options };
+        BotResult result{ drafter_state, options, test_recognized(drafter_state.card_oracle_ids) };
         details::CardValues cards(drafter_state.card_oracle_ids);
         details::BotState bot_state{
             drafter_state,
@@ -102,7 +112,7 @@ namespace mtgdraftbots {
             result.scores.push_back({ best_score / total_weight, best_oracle_results, bot_state.land_combs.second[best_index] });
         }
         std::size_t best_option = 0;
-        std::size_t best_result = -1;
+        float best_result = -1;
         for (std::size_t i = 0; i < result.scores.size(); i++) {
             if (result.scores[i].score > best_result) {
                 best_option = i;
@@ -121,6 +131,7 @@ namespace mtgdraftbots {
         }
         std::uint8_t num_oracles = *reinterpret_cast<const std::uint8_t*>(cur_pos);
         cur_pos += sizeof(std::uint8_t);
+        details::weights_map.clear();
         for (std::size_t i = 0; i < num_oracles; i++) {
             details::Weights weights;
             for (std::size_t x = 0; x < details::WEIGHT_X_DIM; x++) {
@@ -134,23 +145,32 @@ namespace mtgdraftbots {
             cur_pos += length + 1;
             details::weights_map.insert({ title, weights });
         }
+        details::card_lookups.clear();
+        // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
         std::uint32_t num_cards = *reinterpret_cast<const std::uint32_t*>(cur_pos);
         // WASM is 32 bit by default, but this is saved as 64.
         cur_pos += sizeof(std::uint32_t);
         for (std::size_t i = 0; i < num_cards; i++) {
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << ' ' << num_cards << std::endl;
             float rating = *reinterpret_cast<const float*>(cur_pos);
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
             cur_pos += sizeof(float);
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
             details::Embedding embedding;
             for (std::size_t j = 0; j < embedding.size(); j++) {
                 embedding[j] = *reinterpret_cast<const float*>(cur_pos);
                 cur_pos += sizeof(float);
             }
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
 			std::uint8_t produces = *reinterpret_cast<const std::uint8_t*>(cur_pos);
 			cur_pos += sizeof(std::uint8_t);
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
             std::uint8_t cmc = *reinterpret_cast<const std::uint8_t*>(cur_pos);
             cur_pos += sizeof(std::uint8_t);
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() << std::endl;
             std::uint8_t num_symbols = *reinterpret_cast<const std::uint8_t*>(cur_pos);
             cur_pos += sizeof(std::uint8_t);
+            // std::cout << __LINE__ << ": " << cur_pos - buffer.data() <<  ' ' << static_cast<std::size_t>(num_symbols) << std::endl;
             std::vector<std::string> symbols;
             symbols.reserve(num_symbols);
             for (std::size_t j = 0; j < num_symbols; j++) {

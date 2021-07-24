@@ -1,7 +1,8 @@
 import { spawn, Worker } from 'threads';
 
 const draftbots = spawn(new Worker('./mtgdraftbotsWorker.js'));
-export const calculateBotPickFromOptions = async (drafterState, options) => 
+
+export const calculateBotPickFromOptions = async (drafterState, options) =>
   (await draftbots).calculatePickFromOptions({ drafterState, options });
 
 export const calculateBotPick = (drafterState) => {
@@ -9,6 +10,10 @@ export const calculateBotPick = (drafterState) => {
   for (let i = 0; i < drafterState.cardsInPack.length; i++) options.push([i]);
   return calculateBotPickFromOptions(drafterState, options);
 };
+
+export const testRecognized = async (oracleIds) => (await draftbots).testRecognized(oracleIds);
+
+export const initializeDraftbots = async (url) => (await draftbots).initializeDraftbots(url);
 
 export const COLOR_COMBINATIONS = [
   [],

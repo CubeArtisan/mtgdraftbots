@@ -111,71 +111,42 @@ write_basic_package_version_file (
   COMPATIBILITY AnyNewerVersion
 )
 if (EMSCRIPTEN)
-  set(CMAKE_EXECUTABLE_SUFFIX ".js")
   get_filename_component(PREJS ./emscripten/pre.js ABSOLUTE)
-  
-  add_executable(MtgDraftBotsWasmBrowser "src/emscripten.cpp")
-  target_link_libraries (MtgDraftBotsWasmBrowser PUBLIC MtgDraftBots)
-  target_compile_options(MtgDraftBotsWasmBrowser PUBLIC --bind $<$<CONFIG:Debug>:-gsource-map>
-                                                 $<$<CONFIG:RelWithDebInfo>:-gsource-map> $<$<CONFIG:RelWithDebInfo>:-flto>
-                                                 $<$<CONFIG:Release>:-flto>)
-  target_link_options (MtgDraftBotsWasmBrowser PUBLIC --bind --pre-js "${PREJS}" "-sEVAL_CTORS=1"
-                                               "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
-                                               "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
-                                               "-sMODULARIZE=1" "-sEXPORT_ES6=1"
-                                               "-sEXPORT_NAME=createMtgDraftBots"
-											   "-sENVIRONMENT=web" "-sFILESYSTEM=0" "-sASSERTIONS=1"
-											   $<$<CONFIG:Debug>:-gsource-map>
-											   $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
-                                                $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
-												
-  add_executable(MtgDraftBotsWasmWorker "src/emscripten.cpp")
-  target_link_libraries (MtgDraftBotsWasmWorker PUBLIC MtgDraftBots)
-  target_compile_options(MtgDraftBotsWasmWorker PUBLIC --bind $<$<CONFIG:Debug>:-gsource-map>
-                                                 $<$<CONFIG:RelWithDebInfo>:-gsource-map> $<$<CONFIG:RelWithDebInfo>:-flto>
-                                                 $<$<CONFIG:Release>:-flto>)
-  target_link_options (MtgDraftBotsWasmWorker PUBLIC --bind --pre-js "${PREJS}" "-sEVAL_CTORS=1"
-                                               "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
-                                               "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
-                                               "-sMODULARIZE=1" "-sEXPORT_ES6=1"
-                                               "-sEXPORT_NAME=createMtgDraftBots" "-sASSERTIONS=1"
-											   "-sENVIRONMENT=worker" "-sFILESYSTEM=0"
-											   $<$<CONFIG:Debug>:-gsource-map>
-											   $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
-                                                $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
+                                                
+  add_executable(MtgDraftBotsWasmWebWorker "src/emscripten.cpp")
+  set_target_properties(MtgDraftBotsWasmWebWorker PROPERTIES SUFFIX ".js")
+  target_link_libraries (MtgDraftBotsWasmWebWorker PUBLIC MtgDraftBots)
+  target_compile_options(MtgDraftBotsWasmWebWorker PUBLIC --bind $<$<CONFIG:Debug>:-gsource-map>
+                                                          $<$<CONFIG:RelWithDebInfo>:-gsource-map>
+                                                          $<$<CONFIG:RelWithDebInfo>:-flto>
+                                                          $<$<CONFIG:Release>:-flto>)
+  target_link_options (MtgDraftBotsWasmWebWorker PUBLIC --bind --no-entry --pre-js "${PREJS}" "-sEVAL_CTORS=1"
+                                                        "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
+                                                        "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
+                                                        "-sEXPORT_ES6=1"
+                                                        "-sMODULARIZE=1" "-sFORCE_FILESYSTEM=0"
+                                                        "-sEXPORT_NAME=createMtgDraftBots" "-sASSERTIONS=1"
+                                                        "-sENVIRONMENT=web,worker" "-sFILESYSTEM=0"
+                                                        $<$<CONFIG:Debug>:-gsource-map>
+                                                        $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
+                                                        $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
 
-  set(CMAKE_EXECUTABLE_SUFFIX ".cjs")
-  add_executable(MtgDraftBotsWasmNode "src/emscripten.cpp")
-  target_link_libraries (MtgDraftBotsWasmNode PUBLIC MtgDraftBots)
-  target_compile_options(MtgDraftBotsWasmNode PUBLIC --bind $<$<CONFIG:Debug>:-gsource-map>
-                                                 $<$<CONFIG:RelWithDebInfo>:-gsource-map> $<$<CONFIG:RelWithDebInfo>:-flto>
-                                                 $<$<CONFIG:Release>:-flto>)
-  target_link_options (MtgDraftBotsWasmNode PUBLIC --bind --pre-js "${PREJS}" "-sEVAL_CTORS=1"
-                                               "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
-                                               "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
-                                               "-sMODULARIZE=1"
-                                               "-sEXPORT_NAME=createMtgDraftBots" "-sASSERTIONS=1"
-											   "-sENVIRONMENT=node" "-sFILESYSTEM=0"
-											   $<$<CONFIG:Debug>:-gsource-map>
-											   $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
-                                                $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
-												
   add_executable(MtgDraftBotsWasmNodeWorker "src/emscripten.cpp")
+  set_target_properties(MtgDraftBotsWasmNodeWorker PROPERTIES SUFFIX ".cjs")
   target_link_libraries (MtgDraftBotsWasmNodeWorker PUBLIC MtgDraftBots)
   target_compile_options(MtgDraftBotsWasmNodeWorker PUBLIC --bind $<$<CONFIG:Debug>:-gsource-map>
-                                                 $<$<CONFIG:RelWithDebInfo>:-gsource-map> $<$<CONFIG:RelWithDebInfo>:-flto>
-                                                 $<$<CONFIG:Release>:-flto>)
-  target_link_options (MtgDraftBotsWasmNodeWorker PUBLIC --bind --pre-js "${PREJS}" "-sEVAL_CTORS=1"
-                                               "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
-                                               "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
-                                               "-sMODULARIZE=1"
-                                               "-sEXPORT_NAME=createMtgDraftBots" "-sASSERTIONS=1"
-											   "-sENVIRONMENT=node,worker" "-sFILESYSTEM=0"
-											   $<$<CONFIG:Debug>:-gsource-map>
-											   $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
-                                                $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
-												
-
+                                                           $<$<CONFIG:RelWithDebInfo>:-gsource-map>
+                                                           $<$<CONFIG:RelWithDebInfo>:-flto>
+                                                           $<$<CONFIG:Release>:-flto>)
+  target_link_options (MtgDraftBotsWasmNodeWorker PUBLIC --bind --no-entry --pre-js "${PREJS}" "-sEVAL_CTORS=1"
+                                                         "-sINITIAL_MEMORY=39976960" "-sSTRICT=1"
+                                                         "-sALLOW_MEMORY_GROWTH=1" "-sMALLOC=dlmalloc"
+                                                         "-sMODULARIZE=1" "-sFORCE_FILESYSTEM=0"
+                                                         "-sEXPORT_NAME=createMtgDraftBots" "-sASSERTIONS=1"
+                                                         "-sENVIRONMENT=node,worker" "-sFILESYSTEM=0"
+                                                         $<$<CONFIG:Debug>:-gsource-map>
+                                                         $<$<CONFIG:RelWithDebInfo>:-flto> $<$<CONFIG:RelWithDebInfo>:-gsource-map>
+                                                         $<$<CONFIG:Release>:--closure=1> $<$<CONFIG:Release>:-flto>)
 endif()
 # This is used for getting compile_commands.json
 # add_executable (MtgDraftBotsTemp "src/temp.cpp")

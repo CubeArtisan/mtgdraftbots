@@ -1,5 +1,4 @@
-#include <fstream>
-#include <ios>
+#include <string>
 #include <vector>
 
 #include <emscripten/wget.h>
@@ -10,6 +9,7 @@
 using namespace emscripten;
 using namespace mtgdraftbots;
 
+// Bindings for std::vector
 namespace emscripten {
 	namespace internal {
 
@@ -45,12 +45,21 @@ void pass_data_to_initialize(void*, void* data, int len) {
 	initialize_draftbots(file_buffer);
 };
 
-void initialize_error(void*) { }
-
-int main(int, char**) {
-	emscripten_async_wget_data("https://storage.googleapis.com/storage/v1/b/cubeartisan/o/draftbotparams.bin?alt=media",
-							   nullptr, &pass_data_to_initialize, &initialize_error);
+void initialize_error(void*) {
+	std::cerr << "Error initializing" << std::endl;
 }
+
+std::vector<std::string> initialize_with_data(std::string data, int len) {
+	std::vector<char> file_buffer(len);
+	std::memcpy(file_buffer.data(), data.data(), file_buffer.size());
+	initialize_draftbots(file_buffer);
+	std::vector<std::string> oracle_ids;
+	oracle_ids.reserve(details::card_lookups.size());
+	for (const auto pair : details::card_lookups) {
+		oracle_ids.push_back(pair.first);
+	}
+	return oracle_ids;
+};
 
 EMSCRIPTEN_BINDINGS(mtgdraftbots) {
 	value_object<DrafterState>("DrafterState")
@@ -63,7 +72,7 @@ EMSCRIPTEN_BINDINGS(mtgdraftbots) {
 		.field("numPacks", &DrafterState::num_packs)
 		.field("pickNum", &DrafterState::pick_num)
 		.field("numPicks", &DrafterState::num_picks)
-		.field("seed", &DrafterState::num_picks);
+		.field("seed", &DrafterState::seed);
 	value_object<OracleResult>("OracleResult")
 		.field("title", &OracleResult::title)
 		.field("tooltip", &OracleResult::tooltip)
@@ -124,9 +133,12 @@ EMSCRIPTEN_BINDINGS(mtgdraftbots) {
 		.field("numPacks", &BotResult::num_packs)
 		.field("pickNum", &BotResult::pick_num)
 		.field("numPicks", &BotResult::num_picks)
-		.field("seed", &BotResult::num_picks)
+		.field("seed", &BotResult::seed)
 		.field("options", &BotResult::options)
-		.field("scores", &BotResult::scores)
-		.field("chosenOption", &BotResult::chosen_option);
+		.field("chosenOption", &BotResult::chosen_option)
+		.field("recognized", &BotResult::recognized)
+		.field("scores", &BotResult::scores);
 	function("calculatePickFromOptions", &calculate_pick_from_options);
+	function("initializeDraftbots", &initialize_with_data);
+	function("testRecognized", &test_recognized);
 }

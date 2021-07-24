@@ -2,14 +2,26 @@
 
 This package contains code to run the CubeArtisan MTG DraftBots anywhere
 recent javascript versions are supported. It runs them in a separate thread
-to reduce resource competition. The bots have an extremely simple API consisting
-of two functions.
+to reduce resource competition. To use the bots you first have to initialize
+them as follows.
 
 ```javascript
-import { calculateBotPickFromOptions } from 'mtgdraftbots';
+import { initializeDraftbots } from 'mtgdraftbots';
 
-const drafterState = {
-  cardOracleIds: [
+const main = async () => {
+    await initializeDraftbots();
+}
+```
+
+There is an optional parameter to include a URL to a parameters file. You can use
+this if you don't want to depend on the google storage delivery it uses by default.
+Once the library is initialized you can query whether it recognizes the oracleIds
+you want it to make decisions on with this.
+
+```javascript
+import { testRecognized } from 'mtgdraftbots';
+
+const cardOracleIds = [
     "9056eba4-612b-4e82-8689-fe098241b007",
     "7060f2c8-fca0-4b7a-bddf-37682f434596",
     "4c702b96-3288-435d-9154-5b7454419896",
@@ -25,7 +37,22 @@ const drafterState = {
     "104386d9-93b4-4a18-86d5-68718b474f4a",
     "91fbb25b-8521-483f-88b0-77778d25f7fd",
     "158a6225-a246-4fd6-aa57-0df8067b4383",
-  ], // Oracle/Gatherer IDs of all the cards referenced in this object
+]; // Oracle/Gatherer IDs of all the cards referenced in this object
+
+const main = async () => {
+    const recognizedFlags = await testRecognized(cardOracleIds);
+    const recognizedOracleIds = cardOracleIds.filter((_, idx) => recognizedFlags[idx] > 0);
+}
+```
+
+Then finally getting to the meat of the library you can query what decision the bots
+would make with an explanation as follows:
+
+```javascript
+import { calculateBotPick, calculateBotPickFromOptions } from 'mtgdraftbots';
+
+const drafterState = {
+  cardOracleIds,
   picked: [0, 1, 2], // Indices of the oracle IDs of the card this player has picked so far this draft.
   seen: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], // Indices of the oracle IDs of all the cards this player has seen this draft, including duplicates.
   basics: [10, 11, 12, 13, 14], // Indices of the oracle IDs for the set of basics the drafter has access to unlimited copies of.
@@ -43,19 +70,14 @@ const options = [
 ]; // Indices into cardsInPack for the different combinations of cards the player can pick.
 
 const result = calculateBotPickFromOptions(drafterState, options);
+
+const result2 = calculateBotPick(drafterState); // Creates an option for each card in the pack on its own.
 ```
 
-and 
+If you don't track seen you can pass an empty array. The bots will still work, but may be less accurate. To get an
+evaluation of a pool pass `[[]]` as the options.
 
-```javascript
-import { calculateBotPick } from 'mtgdraftbots';
-
-const result = calculateBotPick(drafterState); // Creates an option for each card in the pack on its own.
-```
-
-If you don't track seen you can pass an empty array and the bots will still work, but may be less accurate.
-
-The return values from these functions look like
+The return value from these functions looks like
 
 ```javascript
 result = {
@@ -82,6 +104,9 @@ result = {
 	},
 	...
   ],
+  recognized: [
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ], // 1 if the card is in the data the draftbots understand or 0 if it is not recognized (same as result of testRecognized).
 }
 ```
 

@@ -160,7 +160,7 @@ namespace mtgdraftbots {
                             }
                         }
                     }
-                    scores /= static_cast<float>(bot_state.picked.size());
+                    if (bot_state.picked.size() > 0)  scores /= static_cast<float>(bot_state.picked.size());
                     return OracleScores(bot_state.options.size(), OracleScore(1, scores));
                 }
             };
@@ -175,7 +175,7 @@ namespace mtgdraftbots {
                         const float rating = bot_state.cards.get().ratings[idx];
                         scores += rating * bot_state.land_combs.first[idx];
                     }
-                    scores /= static_cast<float>(bot_state.picked.size());
+                    if (bot_state.picked.size() > 0)  scores /= static_cast<float>(bot_state.picked.size());
                     return OracleScores(bot_state.options.size(), OracleScore(1, scores));
                 }
             };
@@ -198,7 +198,7 @@ namespace mtgdraftbots {
                             }
                         }
                     }
-                    scores /= static_cast<float>(bot_state.seen.size());
+                    if (bot_state.seen.size() > 0)  scores /= static_cast<float>(bot_state.seen.size());
                     return OracleScores(bot_state.options.size(), OracleScore(1, scores));
                 }
             };
@@ -213,7 +213,7 @@ namespace mtgdraftbots {
                         const float rating = bot_state.cards.get().ratings[idx];
                         scores += rating * bot_state.land_combs.first[idx];
                     }
-                    scores /= static_cast<float>(bot_state.seen.size());
+                    if (bot_state.seen.size() > 0)  scores /= static_cast<float>(bot_state.seen.size());
                     return OracleScores(bot_state.options.size(), OracleScore(1, scores));
                 }
             };

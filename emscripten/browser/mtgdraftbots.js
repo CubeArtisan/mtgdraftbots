@@ -1,14 +1,19 @@
 import { spawn } from 'threads';
 
 const draftbots = spawn(new Worker(new URL('./mtgdraftbotsWorker.js', import.meta.url)));
+
 export const calculateBotPickFromOptions = async (drafterState, options) =>
-  (await draftbots).calculatePickFromOptions({ drafterState, options });
+    (await draftbots).calculatePickFromOptions({ drafterState, options });
 
 export const calculateBotPick = (drafterState) => {
   const options = [];
   for (let i = 0; i < drafterState.cardsInPack.length; i++) options.push([i]);
   return calculateBotPickFromOptions(drafterState, options);
 };
+
+export const testRecognized = async (oracleIds) => (await draftbots).testRecognized(oracleIds);
+
+export const initializeDraftbots = async (url) => (await draftbots).initializeDraftbots(url);
 
 export const COLOR_COMBINATIONS = [
   [],
