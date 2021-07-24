@@ -6,6 +6,7 @@
   },
   "browser": "./browser/mtgdraftbots.js",
   "dependencies": {
+    "axios": "^0.21.1",
     "threads": "^1.6.5"
   },
   "description": "This package contains code to run the CubeArtisan MTG DraftBots anywhere\r recent javascript versions are supported. It runs them in a separate thread\r to reduce resource competition. The bots have an extremely simple API consisting\r of two functions.",
@@ -28,5 +29,10 @@
   ],
   "type": "module",
   "types": "./mtgdraftbots.d.ts",
-  "version": "1.1.1"
+  "version": "1.2.0",
+  "repository": "https://github.com/CubeArtisan/mtgdraftbots",
+  "scripts": {
+    "initialize": "mkdir -p ../build-emscripten && cd ../build-emscripten && emcmake cmake --configure .. -G 'Ninja Multi-Config'",
+    "build": "cd ../build-emscripten || yarn initialize; cmake --build . --config Release && cp Release/*WebWorker* ../emscripten/browser && cp Release/*NodeWorker* ../emscripten/node"
+  }
 }
