@@ -20,7 +20,7 @@ expose({
 			"https://storage.googleapis.com/storage/v1/b/cubeartisan/o/draftbotparams.bin?alt=media",
 			{ responseType: 'arraybuffer' },
 		);
-		return (await MtgDraftBots).initializeDraftbots(response.data, response.data.length);
+		return (await MtgDraftBots).initializeDraftbots(response.data, response.data.length ?? response.data.byteLength);
 	},
 	testRecognized: async (oracleIds) => (await MtgDraftBots).testRecognized(oracleIds),
 });
