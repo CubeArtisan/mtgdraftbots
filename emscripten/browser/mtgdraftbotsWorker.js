@@ -18,9 +18,9 @@ expose({
 	initializeDraftbots: async (url) => {
 		const response = await axios.get(
 			"https://storage.googleapis.com/storage/v1/b/cubeartisan/o/draftbotparams.bin?alt=media",
-			{ responseType: 'arraybuffer', headers: { "Content-Type": "application/json" } },
+			{ responseType: 'arraybuffer' },
 		);
-		return (await MtgDraftBots).initializeWithData(response.data, response.data.length);
+		return (await MtgDraftBots).initializeDraftbots(response.data, response.data.length);
 	},
 	testRecognized: async (oracleIds) => (await MtgDraftBots).testRecognized(oracleIds),
 });

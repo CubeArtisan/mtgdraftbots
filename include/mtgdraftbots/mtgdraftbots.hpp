@@ -114,7 +114,7 @@ namespace mtgdraftbots {
                     best_oracle_results.push_back(oracle_result);
                 }
             }
-            result.scores.emplace_back(best_score / total_weight, std::move(best_oracle_results), bot_state.land_combs.second[best_index]);
+            result.scores.push_back({ best_score / total_weight, std::move(best_oracle_results), bot_state.land_combs.second[best_index] });
         }
         std::size_t best_option = 0;
         float best_result = -1;
