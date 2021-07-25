@@ -98,7 +98,7 @@ namespace mtgdraftbots {
             for (const auto& oracle_result : oracle_results) total_weight += oracle_result.weight;
             std::vector<OracleResult> best_oracle_results;
             best_oracle_results.reserve(details::ORACLES.size());
-            for (std::size_t j = 0; j < best_oracle_results.size(); j++) {
+            for (std::size_t j = 0; j < details::ORACLES.size(); j++) {
                 std::vector<float> per_card;
                 per_card.reserve(oracle_results[j].per_card[i].size());
                 for (const auto& scores : oracle_results[j].per_card[i]) per_card.push_back(scores[best_index]);
@@ -110,7 +110,7 @@ namespace mtgdraftbots {
                     std::move(per_card),
                 };
                 // This filters everything that would show up as 0.00%.
-                if (oracle_result.weight > 0.0001) {
+                if (oracle_result.weight >= 0.0001) {
                     best_oracle_results.push_back(oracle_result);
                 }
             }
