@@ -29,7 +29,7 @@
 namespace mtgdraftbots {
     struct BotScore {
         float score;
-        std::array<OracleResult, details::ORACLES.size()> oracle_results;
+        std::vector<OracleResult> oracle_results;
         Lands lands;
     };
 
@@ -96,20 +96,25 @@ namespace mtgdraftbots {
             }
             float total_weight = 0.f;
             for (const auto& oracle_result : oracle_results) total_weight += oracle_result.weight;
-            std::array<OracleResult, details::ORACLES.size()> best_oracle_results;
+            std::vector<OracleResult> best_oracle_results;
+            best_oracle_results.reserve(details::ORACLES.size());
             for (std::size_t j = 0; j < best_oracle_results.size(); j++) {
                 std::vector<float> per_card;
                 per_card.reserve(oracle_results[j].per_card[i].size());
                 for (const auto& scores : oracle_results[j].per_card[i]) per_card.push_back(scores[best_index]);
-                best_oracle_results[j] = OracleResult{
+                OracleResult oracle_result{
                     oracle_results[j].title,
                     oracle_results[j].tooltip,
                     oracle_results[j].weight / total_weight,
                     oracle_results[j].value[i][best_index],
                     std::move(per_card),
                 };
+                // This filters everything that would show up as 0.00%.
+                if (oracle_result.weight > 0.0001) {
+                    best_oracle_results.push_back(oracle_result);
+                }
             }
-            result.scores.push_back({ best_score / total_weight, best_oracle_results, bot_state.land_combs.second[best_index] });
+            result.scores.emplace_back(best_score / total_weight, std::move(best_oracle_results), bot_state.land_combs.second[best_index]);
         }
         std::size_t best_option = 0;
         float best_result = -1;

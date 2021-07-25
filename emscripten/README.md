@@ -8,8 +8,10 @@ them as follows.
 ```javascript
 import { initializeDraftbots } from 'mtgdraftbots';
 
+const customUrl = 'https://example.com/draftbotparams.bin';
+
 const main = async () => {
-    await initializeDraftbots();
+    await initializeDraftbots(customUrl); // If you don't supply a url it'll use the default.
 }
 ```
 
@@ -114,9 +116,36 @@ The set of oracles is not a part of the public API so do not rely on there being
 or otherwise on specifics of the oracles. This is neccesary to allow improvements to be made without
 breaking the API.
 
-The first call can be slow/error since it is retrieving the parameters from a remote server. It should
-be fine to retry the connection. This allows them to be updated as cards come out and new data is
-acquired without you having to update your dependencies.
+## Advanced
+
+### Terminating the Worker(s)
+
+Since the bots are started on import you likely want to mock them in all your tests
+so you don't have to worry about terminating them. If you don't want to mock them
+you can manually terminate them with
+
+```javascript
+import { terminateDraftbots, restartDraftbots } from 'mtgdraftbots';
+
+beforeAll(async () => restartDraftbots(customUrl)); // customUrl is optional.
+afterAll(async () => terminateDraftbots());
+```
+
+### Thread Pool
+
+If you want more than one simulataneous thread running the draftbots you can replace
+the single worker with a thread pool that you can access using the same API with.
+
+```javascript
+import { calculateBotPick, startPool } from 'mtgdraftbots';
+
+const main = async () => {
+    await startPool(8, customUrl); // 8 is the number of workers and customUrl is optional.
+    const result = await calculateBotPick(drafterState);
+};
+```
+
+### Webpack
 
 If using with Webpack make sure you enable web assembly with
 

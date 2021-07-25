@@ -37,8 +37,14 @@ declare function calculateBotPick(drafterState: DrafterState) : Promise<BotResul
 
 declare function calculateBotPickFromOptions(drafterState: DrafterState, options: number[][]) : Promise<BotResult>;
 
-declare function initializeDraftbots(url: string) : Promise<void>;
+declare function initializeDraftbots(url: string) : Promise<boolean>;
 
 declare function testRecognized(oracleIds: string[]) : Promise<boolean[]>;
+
+declare function terminateDraftbots() : Promise<boolean>;
+
+declare function restartDraftbots(url: string) : Promise<boolean>;
+
+declare function startPool(numWorkers: number, url: string) : Promise<boolean>;
 
 declare const COLOR_COMBINATIONS: string[];

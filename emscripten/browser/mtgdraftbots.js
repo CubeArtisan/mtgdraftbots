@@ -1,6 +1,14 @@
-import { spawn } from 'threads';
+import {Pool, spawn, Thread} from 'threads';
 
-const draftbots = spawn(new Worker(new URL('./mtgdraftbotsWorker.js', import.meta.url)));
+const createDraftbotsWorker = async (autoInitialize, url) => {
+  const worker = await spawn(new Worker(new URL('./mtgdraftbotsWorker.js', import.meta.url)))
+  if (autoInitialize) {
+    await worker.initializeDraftbots(url);
+  }
+  return worker;
+}
+
+let draftbots = createDraftbotsWorker(false);
 
 export const calculateBotPickFromOptions = async (drafterState, options) =>
     (await draftbots).calculatePickFromOptions({ drafterState, options });
@@ -13,7 +21,53 @@ export const calculateBotPick = (drafterState) => {
 
 export const testRecognized = async (oracleIds) => (await draftbots).testRecognized(oracleIds);
 
-export const initializeDraftbots = async (url) => (await draftbots).initializeDraftbots(url);
+export const initializeDraftbots = async (url) => {
+  await (await draftbots).initializeDraftbots(url);
+  return true;
+}
+
+export const terminateDraftbots = async () => {
+  const worker = await draftbots;
+  if (worker) {
+    draftbots = null;
+    if (worker.queue) {
+      worker.terminate();
+    } else {
+      await Thread.terminate(worker);
+    }
+  }
+  return true;
+}
+
+export const restartDraftbots = async (url) => {
+  const worker = await draftbots;
+  if (worker !== null) {
+    await terminateDraftbots()
+  }
+  draftbots = createDraftbotsWorker(true, url);
+  await draftbots;
+  return true;
+}
+
+export const startPool = async (numWorkers = 4, url) => {
+  const worker = await draftbots;
+  if (worker !== null) await terminateDraftbots();
+  draftbots = new Promise((resolve) => {
+    if (!numWorkers) numWorkers = 4;
+    const pool = Pool(() => createDraftbotsWorker(true, url), {name: 'MtgDraftBots', size: numWorkers});
+    resolve(new Proxy(pool, {
+      get: (target, name, receiver) => {
+        if (Reflect.has(target, name)) {
+          return Reflect.get(target, name, receiver);
+        } else {
+          return (...args) => target.queue(async (poolWorker) => poolWorker[name](...args))
+        }
+      }
+    }));
+  });
+  await draftbots;
+  return true;
+}
 
 export const COLOR_COMBINATIONS = [
   [],

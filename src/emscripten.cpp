@@ -61,7 +61,21 @@ std::vector<std::string> initialize_with_data(std::string data, int len) {
 	return oracle_ids;
 };
 
+namespace mtgdraftbots::details {
+	template <std::size_t M, std::size_t N>
+	constexpr auto register_array_inner(auto&& registration) {
+		if constexpr (M >= N) return registration;
+		else return register_array_inner(registration.element(emscripten::index<M>()));
+	}
+}
+
+template<typename T, std::size_t N>
+constexpr auto register_array(const char* name) {
+	return mtgdraftbots::details::register_array_inner<0, N>(value_array<std::array<T, N>>(name));
+}
+
 EMSCRIPTEN_BINDINGS(mtgdraftbots) {
+	register_array<typename Lands::value_type, 32>("Lands");
 	value_object<DrafterState>("DrafterState")
 		.field("picked", &DrafterState::picked)
 		.field("seen", &DrafterState::seen)
@@ -79,46 +93,6 @@ EMSCRIPTEN_BINDINGS(mtgdraftbots) {
 		.field("weight", &OracleResult::weight)
 		.field("value", &OracleResult::value)
 		.field("per_card", &OracleResult::per_card);
-	value_array<std::array<OracleResult, 6>>("OracleResults")
-		.element(emscripten::index<0>())
-		.element(emscripten::index<1>())
-		.element(emscripten::index<2>())
-		.element(emscripten::index<3>())
-		.element(emscripten::index<4>())
-		.element(emscripten::index<5>());
-	value_array<Lands>("Lands")
-		.element(emscripten::index<0>())
-		.element(emscripten::index<1>())
-		.element(emscripten::index<2>())
-		.element(emscripten::index<3>())
-		.element(emscripten::index<4>())
-		.element(emscripten::index<5>())
-		.element(emscripten::index<6>())
-		.element(emscripten::index<7>())
-		.element(emscripten::index<8>())
-		.element(emscripten::index<9>())
-		.element(emscripten::index<10>())
-		.element(emscripten::index<11>())
-		.element(emscripten::index<12>())
-		.element(emscripten::index<13>())
-		.element(emscripten::index<14>())
-		.element(emscripten::index<15>())
-		.element(emscripten::index<16>())
-		.element(emscripten::index<17>())
-		.element(emscripten::index<18>())
-		.element(emscripten::index<19>())
-		.element(emscripten::index<20>())
-		.element(emscripten::index<21>())
-		.element(emscripten::index<22>())
-		.element(emscripten::index<23>())
-		.element(emscripten::index<24>())
-		.element(emscripten::index<25>())
-		.element(emscripten::index<26>())
-		.element(emscripten::index<27>())
-		.element(emscripten::index<28>())
-		.element(emscripten::index<29>())
-		.element(emscripten::index<30>())
-		.element(emscripten::index<31>());
 	value_object<BotScore>("BotScore")
 		.field("score", &BotScore::score)
 		.field("oracleResults", &BotScore::oracle_results)
