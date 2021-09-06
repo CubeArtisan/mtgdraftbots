@@ -38,6 +38,7 @@
 
 #include "mtgdraftbots/details/cardcost.hpp"
 #include "mtgdraftbots/details/constants.hpp"
+#include "mtgdraftbots/details/generate_probs.hpp"
 #include "mtgdraftbots/types.hpp"
 #include "mtgdraftbots/oracles.hpp"
 
@@ -65,9 +66,9 @@ constexpr auto FETCH_LANDS = frozen::make_map<std::string_view, std::array<bool,
     {"evolving wilds"sv,       {true, true, true, true, true}},
 });
 
-std::map<std::string, mtgdraftbots::CardDetails> load_card_details(const std::string& carddb_filename, simdjson::ondemand::parser& parser) {
+std::map<std::string, mtgdraftbots::details::CardValue> load_card_details(const std::string& carddb_filename, simdjson::ondemand::parser& parser) {
     simdjson::padded_string carddb_json = simdjson::padded_string::load(carddb_filename);
-    std::map<std::string, mtgdraftbots::CardDetails> result;
+    std::map<std::string, mtgdraftbots::details::CardValue> result;
     simdjson::ondemand::document json_doc = parser.iterate(carddb_json);
     for (auto field : json_doc.get_object()) {
         simdjson::ondemand::object card = field.value();
@@ -110,15 +111,16 @@ std::map<std::string, mtgdraftbots::CardDetails> load_card_details(const std::st
         /* if (card["elo"].get(elo)) elo = 1200; */
         std::size_t cmc = 0;
         if (card["cmc"].get(cmc)) cmc = 0;
+        mtgdraftbots::details::CardCost card_cost(static_cast<std::uint8_t>(cmc), cost_symbols);
         result.try_emplace(std::string{name_lower},
-                           std::string{name_lower}, cost_symbols, mtgdraftbots::Embedding{0.f}, produces, static_cast<std::uint8_t>(cmc),
-                           1200.f);
+                           0.f, mtgdraftbots::details::Embedding{0.f}, card_cost,
+                           produces ? static_cast<std::uint8_t>(mtgdraftbots::constants::get_color_combination_index(*produces)) : 32);
     }
     std::cout << "Loaded all card details." << std::endl;
     return result;
 };
 
-std::vector<std::string> load_card_to_int(const std::string& card_to_int_filename, simdjson::ondemand::parser& parser) {
+std::vector<std::string> load_int_to_card(const std::string& card_to_int_filename, simdjson::ondemand::parser& parser) {
     simdjson::padded_string card_to_int_json = simdjson::padded_string::load(card_to_int_filename);
     std::vector<std::string> result;
     result.emplace_back("placeholder_for_ml_model");
@@ -163,21 +165,9 @@ private:
     std::size_t current_size{0};
 };
 
-template<typename Rng>
-mtgdraftbots::Lands get_random_lands(const mtgdraftbots::Lands& available_lands, Rng& rng) noexcept {
-    std::uniform_int_distribution<std::size_t> land_dist(1, 31);
-    mtgdraftbots::Lands result{0};
-    for (std::size_t i=0; i < 17; i++) {
-        std::size_t ind = land_dist(rng);
-        while (available_lands[ind] <= result[ind]) ind = land_dist(rng);
-        result[ind]++;
-    }
-    return result;
-}
-
 struct Pick {
     // We really only have the precision of a uint8_t so might as well use fixed point.
-    using CardProbabilities = std::array<std::uint8_t, NUM_LAND_COMBS>;
+    using CardProbabilities = std::array<std::uint8_t, mtgdraftbots::details::NUM_LAND_COMBS>;
     // We manipulate it so the first card is always the one chosen to simplify the model's loss calculation.
     static constexpr std::uint16_t chosen_card = 0;
     std::array<std::array<std::uint8_t, 2>, 4> coords{{{0u, 0u}}};
@@ -192,114 +182,48 @@ struct Pick {
     std::array<std::uint16_t, MAX_SEEN> seen{0};
     std::array<CardProbabilities, MAX_SEEN> seen_probs{{{0}}};
 
-    constexpr mtgdraftbots::Lands get_available_lands(
-            const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) const noexcept {
-        mtgdraftbots::Lands result{0, 17, 17, 17, 17, 17, 0};
-        for (std::uint16_t i=0; i < num_picked; i++) {
-            if (card_details[picked[i]]->produces) {
-                result[static_cast<std::size_t>(mtgdraftbots::constants::get_color_combination_index(card_details[picked[i]]->produces.value()))]++;
-            }
-        }
-        return result;
-    }
-
     template <typename Rng>
-    void generate_probs(const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details,
-                        const std::vector<std::optional<mtgdraftbots::details::CardCost>>& card_costs,
+    void generate_probs(const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details,
                         Rng& rng) noexcept {
-        using ScoreValue = std::tuple<float, std::array<float, MAX_IN_PACK>,
-                                      std::array<float, MAX_PICKED>, std::array<float, MAX_SEEN>,
-                                      mtgdraftbots::Lands>;
-        std::array<std::array<std::uint8_t, 5>, NUM_LAND_COMBS> found_values{ {{ 0 }} };
-        constexpr std::array<mtgdraftbots::details::LandsMask, 5> masks{
-            mtgdraftbots::details::MASK_BY_COMB_INDEX[1],
-            mtgdraftbots::details::MASK_BY_COMB_INDEX[2],
-            mtgdraftbots::details::MASK_BY_COMB_INDEX[3],
-            mtgdraftbots::details::MASK_BY_COMB_INDEX[4],
-            mtgdraftbots::details::MASK_BY_COMB_INDEX[5],
-        };
-        const mtgdraftbots::Lands available_lands = get_available_lands(card_details);
-        std::array<mtgdraftbots::details::CardCost, MAX_IN_PACK> in_pack_costs{};
-        std::array<mtgdraftbots::details::CardCost, MAX_PICKED> picked_costs{};
-        std::array<mtgdraftbots::details::CardCost, MAX_SEEN> seen_costs{};
-        for (std::uint16_t i=0; i < num_in_pack; i++) {
-#ifndef NDEBUG
-            if (!card_costs[in_pack[i]]) std::cerr << "Cost is null for card in pack." << std::endl;
-#endif
-            in_pack_costs[i] = *card_costs[in_pack[i]];
+        mtgdraftbots::details::CardValues card_values;
+        mtgdraftbots::DrafterState drafter_state;
+        for (std::uint16_t i = 0; i < num_in_pack; i++) {
+            drafter_state.cards_in_pack.push_back(static_cast<unsigned int>(card_values.size()));
+            card_values.push_back(*card_details[in_pack[i]]);
         }
-        const auto in_pack_begin = std::begin(in_pack_costs);
-        const auto in_pack_end = in_pack_begin + num_in_pack;
-        for (std::uint16_t i=0; i < num_picked; i++) {
-#ifndef NDEBUG
-            if (!card_costs[picked[i]]) std::cerr << "Cost is null for picked card." << std::endl;
-#endif
-            picked_costs[i] = *card_costs[picked[i]];
+        for (std::uint16_t i = 0; i < num_picked; i++) {
+            drafter_state.picked.push_back(static_cast<unsigned int>(card_values.size()));
+            card_values.push_back(*card_details[picked[i]]);
         }
-        const auto picked_begin = std::begin(picked_costs);
-        const auto picked_end = picked_begin + num_picked;
-        for (std::uint16_t i=0; i < num_seen; i++) {
-#ifndef NDEBUG
-            if (!card_costs[seen[i]]) std::cerr << "Cost is null for seen card." << std::endl;
-#endif
-            seen_costs[i] = *card_costs[seen[i]];
+        for (std::uint16_t i = 0; i < num_seen; i++) {
+            drafter_state.seen.push_back(static_cast<unsigned int>(card_values.size()));
+            card_values.push_back(*card_details[seen[i]]);
         }
-        const auto seen_begin = std::begin(seen_costs);
-        const auto seen_end = seen_begin + num_seen;
-        for (std::size_t i=0; i < NUM_LAND_COMBS; i++) {
-            ScoreValue prev_score{-1.f, {0.f}, {0.f}, {0.f}, get_random_lands(available_lands, rng)};
-            ScoreValue current_score{0.f, {0.f}, {0.f}, {0.f}, std::get<mtgdraftbots::Lands>(prev_score)};
-            while (std::get<float>(prev_score) < std::get<float>(current_score)) {
-                prev_score = current_score;
-                for (std::uint8_t increase=1; increase < 32; increase++) {
-                    if (std::get<mtgdraftbots::Lands>(prev_score)[increase] >= available_lands[increase]) continue;
-                    for (std::uint8_t decrease=1; decrease < 32; decrease++) {
-                        if (decrease == increase || std::get<mtgdraftbots::Lands>(prev_score)[decrease] == 0) continue;
-                        ScoreValue new_score = prev_score;
-                        mtgdraftbots::Lands& new_lands = std::get<mtgdraftbots::Lands>(new_score);
-                        std::transform(std::begin(masks), std::end(masks), std::begin(found_values[i]),
-                            [&](const mtgdraftbots::details::LandsMask& mask) { return mtgdraftbots::details::sum_masked(mask, new_lands); });
-                        bool too_close = false;
-                        for (std::size_t j = 0; j < i; j++) {
-                            std::int8_t difference = 0;
-                            for (std::size_t k = 0; k < found_values[i].size(); k++) {
-                                difference += std::abs(found_values[j][k] - found_values[i][k]);
-                            }
-                            if (difference < 5) {
-                                too_close = true;
-                                break;
-                            }
-                        }
-                        if (too_close) continue;
-                        new_lands[increase]++;
-                        new_lands[decrease]--;
-                        const auto transformation = [&new_lands](const mtgdraftbots::details::CardCost& cost){ return cost.calculate_probability(new_lands); };
-                        std::transform(in_pack_begin, in_pack_end, std::begin(std::get<1>(new_score)), transformation);
-                        std::transform(picked_begin, picked_end, std::begin(std::get<2>(new_score)), transformation);
-                        std::transform(seen_begin, seen_end, std::begin(std::get<3>(new_score)), transformation);
-                        float max_in_pack_prob = std::reduce(std::execution::unseq, std::begin(std::get<1>(new_score)),
-                                                             std::begin(std::get<1>(new_score)) + num_in_pack,
-                                                             0.f, [](auto a, auto b){ return std::max(a, b); });
-                        float min_in_pack_prob = std::reduce(std::execution::unseq, std::begin(std::get<1>(new_score)),
-                                                             std::begin(std::get<1>(new_score)) + num_in_pack,
-                                                             1.f, [](auto a, auto b) { return std::min(a, b); });
-                        float sum_picked_probs = std::reduce(std::execution::unseq, std::begin(std::get<2>(new_score)),
-                                                             std::begin(std::get<2>(new_score)) + num_picked);
-                        float mean_seen_probs = std::reduce(std::execution::unseq, std::begin(std::get<3>(new_score)),
-                                                            std::begin(std::get<3>(new_score)) + num_seen) / num_seen;
-                        std::get<float>(new_score) = sum_picked_probs + 3 * mean_seen_probs + 5 * max_in_pack_prob + 2 * min_in_pack_prob;
-                        if (std::get<float>(new_score) > std::get<float>(current_score)) current_score = new_score;
-                    }
-                }
+        for (std::uint16_t i = 0; i < 5; i++) {
+            drafter_state.basics.push_back(static_cast<unsigned int>(card_values.size()));
+            card_values.push_back(mtgdraftbots::details::CardValue{ 0.f, {0.f}, {}, static_cast<std::uint8_t>(i + 1) });
+        }
+        drafter_state.card_oracle_ids.resize(card_values.ratings.size());
+        std::vector<std::array<float, mtgdraftbots::details::NUM_LAND_COMBS>> probabilities =
+            mtgdraftbots::details::generate_probs(drafter_state, card_values).first;
+        for (std::uint16_t i = 0; i < num_in_pack; i++) {
+            for (std::uint16_t j = 0; j < mtgdraftbots::details::NUM_LAND_COMBS; j++) {
+                in_pack_probs[i][j] = static_cast<std::uint8_t>(255 * probabilities[i][j]);
             }
-            using ProbType = typename CardProbabilities::value_type;
-            for (std::size_t j=0; j < num_in_pack; j++) in_pack_probs[j][i] = static_cast<ProbType>(std::get<1>(current_score)[j] * std::numeric_limits<ProbType>::max());
-            for (std::size_t j=0; j < num_picked; j++) picked_probs[j][i] = static_cast<ProbType>(std::get<2>(current_score)[j] * std::numeric_limits<ProbType>::max());
-            for (std::size_t j=0; j < num_seen; j++) seen_probs[j][i] = static_cast<ProbType>(std::get<3>(current_score)[j] * std::numeric_limits<ProbType>::max());
+        }
+        for (std::uint16_t i = 0; i < num_picked; i++) {
+            for (std::uint16_t j = 0; j < mtgdraftbots::details::NUM_LAND_COMBS; j++) {
+                picked_probs[i][j] = static_cast<std::uint8_t>(255 * probabilities[i + num_in_pack][j]);
+            }
+        }
+        for (std::uint16_t i = 0; i < num_seen; i++) {
+            for (std::uint16_t j = 0; j < mtgdraftbots::details::NUM_LAND_COMBS; j++) {
+                seen_probs[i][j] = static_cast<std::uint8_t>(255 * probabilities[i + num_in_pack + num_picked][j]);
+            }
         }
     }
 
-    void verify_counts(std::string_view source, const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) const {
+    void verify_counts(std::string_view source, const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details) const {
         if (num_in_pack > in_pack.size()) {
             std::cerr << "Error in " << source << ". Num_in_pack was: " << num_in_pack << std::endl;
         }
@@ -349,7 +273,7 @@ private:
 template<std::size_t N>
 bool load_array_indices(std::array<std::uint16_t, N>& indices, std::uint16_t& num_indices,
                         simdjson::ondemand::array json_indices,
-                        const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) {
+                        const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details) {
     num_indices = 0;
     std::uint64_t card_index64{0};
     for (auto json_index : json_indices) {
@@ -455,7 +379,6 @@ bool load_coord_info(std::array<std::array<std::uint8_t, 2>, 4>& coords,
 char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
     for (std::size_t i = 0; i < 4; i++) {
         for (std::size_t j = 0; j < 2; j++) {
-
             *reinterpret_cast<std::uint8_t*>(current_pos) = pick.coords[i][j];
             current_pos += sizeof(std::uint8_t);
         }
@@ -476,7 +399,7 @@ char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
     }
     for (std::uint16_t i = 0; i < pick.num_in_pack; i++) {
         for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
-            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.in_pack_probs[j][i];
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.in_pack_probs[i][j];
             current_pos += sizeof(std::uint8_t);
         }
     }
@@ -486,7 +409,7 @@ char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
     }
     for (std::uint16_t i = 0; i < pick.num_picked; i++) {
         for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
-            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.picked_probs[j][i];
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.picked_probs[i][j];
             current_pos += sizeof(std::uint8_t);
         }
     }
@@ -496,7 +419,7 @@ char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
     }
     for (std::uint16_t i = 0; i < pick.num_seen; i++) {
         for (std::size_t j = 0; j < NUM_LAND_COMBS; j++) {
-            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.seen_probs[j][i];
+            *reinterpret_cast<std::uint8_t*>(current_pos) = pick.seen_probs[i][j];
             current_pos += sizeof(std::uint8_t);
         }
     }
@@ -504,8 +427,7 @@ char* write_pick_to_buffer(char* current_pos, const Pick& pick) {
 }
 
 
-void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details,
-                          const std::vector<std::optional<mtgdraftbots::details::CardCost>>& card_costs,
+void process_files_worker(const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details,
                           const std::set<std::string, std::less<>>& valid_deckids,
                           moodycamel::ConcurrentQueue<std::string>& files_to_process,
                           moodycamel::BlockingConcurrentQueue<Pick>& processed_picks,
@@ -548,7 +470,7 @@ void process_files_worker(const std::vector<std::optional<mtgdraftbots::CardDeta
                     || !load_coord_info(current_pick.coords, current_pick.coord_weights,
                                         pick_json["pack"], pick_json["packs"], pick_json["pick"],
                                         pick_json["packSize"])) continue;
-                current_pick.generate_probs(card_details, card_costs, rng);
+                current_pick.generate_probs(card_details, rng);
                 num_valid_in_file++;
                 current_pick.verify_counts("parse_pick", card_details);
                 processed_picks.enqueue(processed_picks_producer, current_pick);
@@ -570,7 +492,7 @@ constexpr std::size_t shuffle_buffer_size = 1ull << 20;
 void shuffle_worker(std::stop_token stop_tkn,
                     moodycamel::BlockingConcurrentQueue<Pick>& processed_picks,
                     moodycamel::BlockingConcurrentQueue<Pick>& shuffled_picks,
-                    const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) {
+                    const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details) {
     std::mt19937_64 rng(random_seed_seq::get_instance());
     moodycamel::ConsumerToken processed_picks_consumer(processed_picks);
     moodycamel::ProducerToken shuffled_picks_producer(shuffled_picks);
@@ -599,7 +521,7 @@ void save_picks(std::stop_token stop_tkn,
                 moodycamel::BlockingConcurrentQueue<Pick>& shuffled_picks,
                 std::atomic<std::size_t>& file_count,
                 std::string_view destination_format_string,
-                const std::vector<std::optional<mtgdraftbots::CardDetails>>& card_details) {
+                const std::vector<std::optional<mtgdraftbots::details::CardValue>>& card_details) {
     std::array<char, sizeof(Pick)> prep_buffer{ 0 };
     moodycamel::ConsumerToken shuffled_picks_consumer(shuffled_picks);
     Pick current_pick;
@@ -662,28 +584,19 @@ constexpr std::size_t NUM_FILE_WRITERS = 4;
 int main() {
     std::locale::global(std::locale("en_US.UTF-8"));
     simdjson::ondemand::parser parser;
-    const std::map<std::string, mtgdraftbots::CardDetails> card_details_by_name = load_card_details("data/maps/carddb.json", parser);
-    const std::vector<std::string> card_to_int = load_card_to_int("data/maps/int_to_card.json", parser);
-    const std::vector<std::optional<mtgdraftbots::CardDetails>> card_details =
-        ([&]() -> std::vector<std::optional<mtgdraftbots::CardDetails>> {
-            auto transformed = card_to_int
-                | std::views::transform([&](const std::string& name) -> std::optional<mtgdraftbots::CardDetails> {
+    const std::map<std::string, mtgdraftbots::details::CardValue> card_details_by_name = load_card_details("data/maps/carddb.json", parser);
+    const std::vector<std::string> int_to_card = load_int_to_card("data/maps/int_to_card.json", parser);
+    const std::vector<std::optional<mtgdraftbots::details::CardValue>> card_details =
+        ([&]() -> std::vector<std::optional<mtgdraftbots::details::CardValue>> {
+            auto transformed = int_to_card
+                | std::views::transform([&](const std::string& name) -> std::optional<mtgdraftbots::details::CardValue> {
                     auto iter = card_details_by_name.find(name);
                     if (iter == card_details_by_name.end()) return std::nullopt;
                     else return iter->second;
                 });
             return {std::begin(transformed), std::end(transformed)};
         })();
-    const std::vector<std::optional<mtgdraftbots::details::CardCost>> card_costs =
-        ([&]() -> std::vector<std::optional<mtgdraftbots::details::CardCost>> {
-            auto transformed = card_details
-                | std::views::transform([](const auto& cd) -> std::optional<mtgdraftbots::details::CardCost> {
-                    if (cd) return mtgdraftbots::details::CardCost{*cd};
-                    else return std::nullopt;
-                });
-            return {std::begin(transformed), std::end(transformed)};
-        })();
-    std::cout << "Created all the card costs." << std::endl;
+
     std::vector<std::string> draft_filenames;
     for (const auto& path_data : std::filesystem::directory_iterator("data/drafts/")) {
         draft_filenames.push_back(path_data.path().string());
@@ -707,7 +620,7 @@ int main() {
     file_workers.reserve(std::jthread::hardware_concurrency() - 3);
     for (size_t i=0; i < std::jthread::hardware_concurrency() - 3; i++) {
         file_workers.emplace_back([&]() {
-            process_files_worker(card_details, card_costs, valid_deckids, files_to_process, processed_picks,
+            process_files_worker(card_details, valid_deckids, files_to_process, processed_picks,
                                  files_to_process_producer);
         });
     }
