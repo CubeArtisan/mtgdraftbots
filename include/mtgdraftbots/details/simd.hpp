@@ -6,6 +6,10 @@
 #include <cmath>
 #include <concepts>
 
+#ifdef USE_VECTORCLASS
+#include <vectorclass.h>
+#endif
+
 namespace mtgdraftbots {
     using Lands = std::array<unsigned char, 32>;
 

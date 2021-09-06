@@ -110,7 +110,7 @@ namespace mtgdraftbots {
                     std::move(per_card),
                 };
                 // This filters everything that would show up as 0.00%.
-                if (oracle_result.weight > 0.0001) {
+                if (oracle_result.weight >= 0.0001 * total_weight) {
                     best_oracle_results.push_back(oracle_result);
                 }
             }
