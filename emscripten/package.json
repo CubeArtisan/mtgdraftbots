@@ -6,7 +6,7 @@
   },
   "browser": "./browser/mtgdraftbots.js",
   "dependencies": {
-    "axios": "^0.21.2",
+    "axios": "^1.6.0",
     "threads": "https://github.com/ruler501/threads.js.git#fix-windows"
   },
   "description": "This package contains code to run the CubeArtisan MTG DraftBots anywhere\r recent javascript versions are supported. It runs them in a separate thread\r to reduce resource competition. The bots have an extremely simple API consisting\r of two functions.",
